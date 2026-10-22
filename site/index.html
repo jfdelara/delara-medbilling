@@ -51,7 +51,7 @@
     <button type="button" class="chip" id="moreBtn" aria-haspopup="true" aria-expanded="false">More ▾</button>
     <div id="moreMenu" class="menu" hidden role="menu">
       <button role="menuitem" data-tab="procedures">Procedures</button>
-      <button role="menuitem" data-saved="fav">★ Favourites</button>
+      <button role="menuitem" data-tab="favmanage">★ Manage favourites</button>
       <button role="menuitem" data-saved="recent">Recent</button>
       <button role="menuitem" data-tab="icd9" class="needdata">ICD-9</button>
       <button role="menuitem" data-tab="price" class="needdata">Price list</button>
@@ -70,6 +70,7 @@
 </nav>
 <nav class="tabs" id="tabs" role="tablist">
   <button data-tab="procedures" class="on">Procedures</button>
+  <button data-tab="favmanage">★ Favourites</button>
   <button data-tab="price" class="needdata">Price list</button>
   <button data-tab="rules" class="needdata">Rules</button>
   <button data-tab="modifiers" class="abonly">Modifiers</button>
@@ -103,6 +104,18 @@
       <article class="detail" id="detail" hidden></article>
       <input type="file" id="impFile" accept=".json,application/json" hidden aria-label="Import favourites file">
     </div>
+  </section>
+
+  <section id="tab-favmanage" class="tab">
+    <div class="fmtools">
+      <button type="button" class="primary fmnew" id="fmNew">+ New favourite</button>
+      <div class="inputwrap"><input id="fmq" type="search" enterkeyhint="search" autocapitalize="off" spellcheck="false" placeholder="Search favourites (name, code, ICD-9)" aria-label="Search favourites"></div>
+      <button type="button" class="ghost" id="fmImp">Import CSV</button>
+      <button type="button" class="ghost" id="fmExp">Export CSV</button>
+      <input type="file" id="fmFile" accept=".csv,text/csv" hidden aria-label="Import favourites CSV">
+    </div>
+    <p class="small muted">Tap <b>+ New favourite</b> for one code or a bundle of up to 10 lines, or tap ☆ on any code to save it here. Groups and “New group” stay on the Procedures ★ Favourites list. Stored on this device only.</p>
+    <div id="fmList" class="fmlist"></div>
   </section>
 
   <section id="tab-price" class="tab">
