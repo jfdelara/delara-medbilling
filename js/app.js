@@ -2329,6 +2329,162 @@
     }).catch(() => {});
   }
 
+  // ------------------------------------------------------------ v40: close ✕ on the code detail + Favourites manager tab
+  function closeDetail() {
+    const el = $('#detail'); if (!el || el.hidden) return;
+    current = null; el.hidden = true; el.innerHTML = ''; $('.split').classList.remove('showing');
+    $$('.hit').forEach(b => b.classList.remove('sel')); if (!lastQuery) renderSaved();
+    history.replaceState(null, '', location.pathname + location.search);
+  }
+  (function () {
+    const el = $('#detail'); if (!el) return;
+    const add = () => { if (!el.hidden && el.firstChild && !el.querySelector(':scope > .dclose')) el.insertAdjacentHTML('afterbegin', '<button type="button" class="dclose" aria-label="Close code details" title="Close (Esc)">✕</button>'); };
+    new MutationObserver(add).observe(el, { childList: true, attributes: true, attributeFilter: ['hidden'] });
+    el.addEventListener('click', e => { if (e.target.closest('.dclose')) { e.preventDefault(); e.stopPropagation(); closeDetail(); } }, true);
+    document.addEventListener('keydown', e => { if (e.key !== 'Escape' || sheetEl || $$('dialog[open]').length || el.hidden) return; if (e.target.matches && e.target.matches('input,textarea,select') && e.target.value) return; e.preventDefault(); closeDetail(); });
+  })();
+  // Custom names: 'mb.favnames' = {<fav key>: name}; device only. Order = FAVS order (↑↓ moves within it).
+  const NAMES = (() => { try { const o = JSON.parse(LS.get('favnames', '{}')); return o && typeof o === 'object' ? o : {}; } catch (e) { return {}; } })();
+  const saveNames = () => { Object.keys(NAMES).forEach(k => { if (!FAVS.includes(k) || !NAMES[k]) delete NAMES[k]; }); LS.set('favnames', JSON.stringify(NAMES)); };
+  const fmOpen = new Set();
+  function fmDesc(key) { const sk = splitKey(key); if (sk.jur !== JUR) return ''; if (sk.t === 'H') return BYCODE[sk.code] ? BYCODE[sk.code].desc : ''; return ICDBY[sk.code] ? icdLabel(ICDBY[sk.code]) : ''; }
+  function renderFavManage() {
+    const box = $('#fmList'); if (!box) return;
+    const q = ($('#fmq').value || '').trim().toLowerCase();
+    const keys = FAVS.filter(k => !heldJur(splitKey(k).jur));
+    const shown = keys.filter(k => !q || ((NAMES[k] || '') + ' ' + favText(k)).toLowerCase().includes(q));
+    const bq = BUNDLES.filter(x => !q || (x.name + ' ' + x.lines.map(l => splitKey(l.h).code + ' ' + l.dx.map(d => splitKey(d).code).join(' ')).join(' ')).toLowerCase().includes(q));
+    const bRows = bq.map(x => { const op = fmOpen.has('B:' + x.id), f = x.lines[0];
+      return `<div class="fmrow fmb" data-fmb="${esc(x.id)}"><button type="button" class="fmexp" data-fma="exp" aria-expanded="${op}" aria-label="Show all lines">${op ? '▴' : '▾'}</button><span class="fmname">${esc(x.name)}</span><span class="code fmcode">${esc(splitKey(f.h).code)} <span class="badge">+${x.lines.length - 1}</span></span><span class="fmdx">${esc(f.dx.map(d => splitKey(d).code).join(', '))}</span><span class="fmact"><button type="button" data-fma="edit" aria-label="Edit bundle" title="Edit">✎</button><button type="button" data-fma="del" aria-label="Delete bundle" title="Delete">✕</button></span>${op ? `<div class="fmdesc small">${x.lines.map((l, i) => `${i + 1}. <b>${esc(splitKey(l.h).code)}</b> ${esc(fmDesc(l.h))}${l.dx.length ? ` <span class="muted">· ICD-9 ${esc(l.dx.map(d => splitKey(d).code).join(', '))}</span>` : ''}`).join('<br>')}</div>` : ''}</div>`; }).join('');
+    if (!keys.length && !BUNDLES.length) { box.innerHTML = '<p class="muted pad">No favourites yet. Tap + New favourite (one code or a bundle of lines), tap ☆ beside any code, or import a CSV.</p>'; return; }
+    box.innerHTML = `<div class="fmhead"><span>Name</span><span>Code</span><span>ICD-9</span><span></span></div>` + bRows + (shown.map(k => {
+      const sk = splitKey(k), i = FAVS.indexOf(k), op = fmOpen.has(k);
+      const dx = sk.t === 'H' ? linksOf(k).map(x => splitKey(x).code).join(', ') : '';
+      const desc = fmDesc(k), lnk = linksOf(k).map(x => `${splitKey(x).code} ${fmDesc(x)}`).join(' · ');
+      return `<div class="fmrow" data-fmk="${esc(k)}"><button type="button" class="fmexp" data-fma="exp" aria-expanded="${op}" aria-label="Show description">${op ? '▴' : '▾'}</button><span class="fmname">${esc(NAMES[k] || '—')}</span><span class="code fmcode">${esc(sk.code)}${sk.jur !== JUR ? ` <span class="badge j">${esc(sk.jur)}</span>` : ''}</span><span class="fmdx">${esc(dx || (sk.t === 'I' ? 'ICD-9' : ''))}</span><span class="fmact"><button type="button" data-fma="up" aria-label="Move up"${i <= 0 || q ? ' disabled' : ''}>↑</button><button type="button" data-fma="down" aria-label="Move down"${i >= FAVS.length - 1 || q ? ' disabled' : ''}>↓</button><button type="button" data-fma="edit" aria-label="Rename" title="Edit name">✎</button><button type="button" data-fma="del" aria-label="Delete favourite" title="Delete">✕</button></span>${op ? `<div class="fmdesc small">${esc(desc || 'Saved under ' + sk.jur)}${lnk ? `<br><span class="muted">Linked: ${esc(lnk)}</span>` : ''}</div>` : ''}</div>`;
+    }).join('') || (bRows ? '' : '<p class="muted pad">No favourites match.</p>'));
+  }
+  function csvCell(v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+  function parseCsv(t) {
+    const rows = []; let r = [], c = '', q = false;
+    for (let i = 0; i < t.length; i++) { const ch = t[i];
+      if (q) { if (ch === '"') { if (t[i + 1] === '"') { c += '"'; i++; } else q = false; } else c += ch; }
+      else if (ch === '"') q = true; else if (ch === ',') { r.push(c); c = ''; } else if (ch === '\n' || ch === '\r') { if (ch === '\r' && t[i + 1] === '\n') i++; r.push(c); rows.push(r); r = []; c = ''; } else c += ch; }
+    if (c || r.length) { r.push(c); rows.push(r); } return rows.filter(x => x.some(y => y.trim()));
+  }
+  function fmExport() {
+    const lines = [['name', 'type', 'code', 'jurisdiction', 'linked icd9', 'bundle'].join(',')].concat(FAVS.map(k => { const s = splitKey(k);
+      return [NAMES[k] || '', s.t === 'H' ? 'HSC' : 'ICD9', s.code, s.jur, s.t === 'H' ? linksOf(k).map(x => splitKey(x).code).join(' ') : '', ''].map(csvCell).join(','); }),
+      BUNDLES.flatMap(b => b.lines.map(l => { const s = splitKey(l.h); return [b.name, 'HSC', s.code, s.jur, l.dx.map(d => splitKey(d).code).join(' '), 'yes'].map(csvCell).join(','); })));
+    const a = document.createElement('a'), d = new Date().toISOString().slice(0, 10);
+    a.href = URL.createObjectURL(new Blob([lines.join('\n') + '\n'], { type: 'text/csv' })); a.download = `fee-desk-favourites-${d}.csv`;
+    document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500); toast('Exported ' + FAVS.length + ' favourites' + (BUNDLES.length ? ` and ${BUNDLES.length} bundles` : ''));
+  }
+  function fmImport(file) {
+    const r = new FileReader(); r.onload = () => {
+      const rows = parseCsv(String(r.result)); if (!rows.length) return alert('Import failed: empty CSV.');
+      const h = rows[0].map(x => x.trim().toLowerCase()), ix = n => h.indexOf(n);
+      if (ix('code') < 0) return alert('Import failed: the CSV needs a "code" column (columns: name, type, code, jurisdiction, linked icd9).');
+      let add = 0, skip = 0, ren = 0, lk = 0; const mk = (t, j, c) => t + ':' + (j === 'AB' ? '' : j + '|') + c;
+      const nb = {};
+      rows.slice(1).forEach(x => { const g = n => ix(n) >= 0 ? (x[ix(n)] || '').trim() : '';
+        if (/^(y|yes|1|true)$/i.test(g('bundle')) && g('name')) { const code = g('code').toUpperCase(), j = (g('jurisdiction') || JUR).toUpperCase();
+          if (!code || (j === JUR && !BYCODE[code])) { skip++; return; }
+          (nb[g('name')] = nb[g('name')] || []).push({ h: mk('H', j, code), dx: g('linked icd9').split(/[\s;]+/).filter(Boolean).map(d => d.toUpperCase()).filter(d => j !== JUR || ICDBY[d]).slice(0, LMAX).map(d => mk('I', j, d)) }); return; }
+        const code = g('code').toUpperCase(), j = (g('jurisdiction') || JUR).toUpperCase(), t = /icd/i.test(g('type')) ? 'I' : 'H';
+        if (!code || (j === JUR && (t === 'H' ? !BYCODE[code] : !ICDBY[code]))) { skip++; return; }
+        const k = mk(t, j, code); if (!FAVS.includes(k)) { FAVS.push(k); add++; }
+        if (g('name')) { NAMES[k] = g('name').slice(0, 80); ren++; }
+        if (t === 'H') g('linked icd9').split(/[\s;]+/).filter(Boolean).forEach(d => { d = d.toUpperCase(); if (j !== JUR || !ICDBY[d]) return; const ik = mk('I', j, d); if (!addLink(k, ik)) lk++; }); });
+      let nbn = 0; Object.keys(nb).forEach(n => { const ls = nb[n].slice(0, BMAX), ex = BUNDLES.find(b => b.name === n);
+        if (ex) ex.lines = ls; else BUNDLES.push({ id: 'b' + Date.now().toString(36) + (nbn), name: n, lines: ls }); nbn++; }); if (nbn) saveBundles();
+      saveLists(); saveNames(); renderFavManage(); renderSaved();
+      toast((nbn ? `${nbn} bundle${nbn === 1 ? '' : 's'}; ` : '') + `Imported ${add} new favourite${add === 1 ? '' : 's'}, ${ren} name${ren === 1 ? '' : 's'}, ${lk} link${lk === 1 ? '' : 's'}` + (skip ? `; ${skip} unknown skipped` : ''));
+    }; r.readAsText(file);
+  }
+  // v41: Favourite bundles 'mb.favbundles' = [{id, name, lines:[{h:<fee key>, dx:[<icd keys>]}]}], 2..BMAX lines, device only.
+  // The "+ New favourite" editor: name + lines (fee code + optional ICD-9 each); 1 line saves a normal favourite, 2+ a bundle.
+  const BMAX = 10;
+  const BUNDLES = (() => { try { const o = JSON.parse(LS.get('favbundles', '[]')); return Array.isArray(o) ? o.filter(x => x && Array.isArray(x.lines)) : []; } catch (e) { return []; } })();
+  const saveBundles = () => LS.set('favbundles', JSON.stringify(BUNDLES));
+  function fmNewSheet(bid) {
+    const ed = bid ? BUNDLES.find(x => x.id === bid) : null;
+    let lines = ed ? ed.lines.map(l => ({ h: l.h, dx: l.dx.slice() })) : [{ h: null, dx: [] }];
+    const body = `<label class="fgsub" for="nfName">Name</label><div class="inputwrap"><input id="nfName" maxlength="80" placeholder="e.g. TAH + BSO/Cysto" aria-label="Favourite name" value="${esc(ed ? ed.name : '')}"></div>
+      <div id="nfLines"></div>
+      <button type="button" class="ghost nfadd" id="nfAdd">+ Add line</button>
+      <p class="fgerr" id="nfErr" role="alert" hidden></p>
+      <div class="fgacts"><button type="button" class="ghost" data-close>Cancel</button><button type="button" class="primary" id="nfSave">Save favourite</button></div>`;
+    openSheet('fmNewSheet', ed ? '★ Edit favourite' : '★ New favourite', body, el => {
+      const chip = (k, attr) => `<div class="lkrow k-${k[0]}"><span class="code">${esc(splitKey(k).code)}</span><span class="lkd">${esc(shortDesc(k, true))}</span><button type="button" class="ghost lkrm" ${attr}>${k[0] === 'H' ? 'Change' : 'Remove'}</button></div>`;
+      const opt = (k, on, attr) => `<button type="button" class="lkopt" ${attr}="${esc(k)}" aria-pressed="${on}"><span class="code">${esc(splitKey(k).code)}</span><span class="lkd">${esc(shortDesc(k, true))}</span><span class="lkst">${on ? '✓' : '+'}</span></button>`;
+      const paint = () => {
+        $('#nfLines', el).innerHTML = lines.map((l, i) => `<div class="nfline" data-li="${i}"><div class="nflh"><b>Line ${i + 1}</b>${lines.length > 1 ? `<button type="button" class="ghost nfx" data-nfdel aria-label="Remove line ${i + 1}">✕</button>` : ''}</div>
+          ${l.h ? chip(l.h, 'data-nfun') : `<div class="inputwrap fgq"><input class="nfq" type="search" autocapitalize="off" spellcheck="false" placeholder="Fee code: search by code or words" aria-label="Search fee codes, line ${i + 1}"></div><div class="fgopts lkres nfres"></div>`}
+          ${l.dx.map(k => chip(k, `data-nfdrm="${esc(k)}"`)).join('')}
+          ${l.dx.length < LMAX ? `<div class="inputwrap fgq"><input class="nfd" type="search" autocapitalize="off" spellcheck="false" placeholder="ICD-9 (optional): search" aria-label="Search ICD-9 codes, line ${i + 1}"></div><div class="fgopts lkres nfdres"></div>` : ''}</div>`).join('');
+        $('#nfAdd', el).hidden = lines.length >= BMAX;
+      };
+      const err = m => { const e = $('#nfErr', el); e.textContent = m; e.hidden = !m; };
+      paint(); const f0 = $(ed ? '#nfName' : '.nfq', el); if (f0) f0.focus();
+      el.addEventListener('input', e => {
+        const ln = e.target.closest('.nfline'); if (!ln) return; const l = lines[+ln.dataset.li], v = e.target.value.trim();
+        if (e.target.matches('.nfq')) $('.nfres', ln).innerHTML = v ? (searchCodes('H', v).map(k => opt(k, false, 'data-nfh')).join('') || '<p class="muted small lknone">No matching fee codes.</p>') : '';
+        if (e.target.matches('.nfd')) $('.nfdres', ln).innerHTML = v ? (searchCodes('I', v).map(k => opt(k, l.dx.includes(k), 'data-nfi')).join('') || '<p class="muted small lknone">No matching ICD-9 codes.</p>') : '';
+      });
+      el.addEventListener('click', e => {
+        const t = e.target.closest('[data-nfh],[data-nfun],[data-nfi],[data-nfdrm],[data-nfdel],#nfAdd,#nfSave'); if (!t) return; err('');
+        const ln = t.closest('.nfline'), i = ln ? +ln.dataset.li : -1, l = lines[i];
+        if (t.dataset.nfh) l.h = t.dataset.nfh;
+        else if (t.hasAttribute('data-nfun')) l.h = null;
+        else if (t.dataset.nfi) { const k = t.dataset.nfi; if (!l.dx.includes(k)) l.dx.push(k); }
+        else if (t.dataset.nfdrm) l.dx = l.dx.filter(x => x !== t.dataset.nfdrm);
+        else if (t.hasAttribute('data-nfdel')) lines.splice(i, 1);
+        else if (t.id === 'nfAdd') { lines.push({ h: null, dx: [] }); paint(); const q = $$('.nfq', el); if (q.length) q[q.length - 1].focus(); return; }
+        else if (t.id === 'nfSave') {
+          const ok = lines.filter(x => x.h), n = $('#nfName', el).value.trim().slice(0, 80);
+          if (!ok.length) return err('Pick a fee code first.');
+          if (ok.length < lines.length) return err('Every line needs a fee code (or remove the empty line with ✕).');
+          if (ok.length > 1 && !n) return err('Give the bundle a name.');
+          if (ok.length === 1) {   // one line = a normal single favourite (links + name)
+            const k = ok[0].h; if (!FAVS.includes(k)) FAVS.push(k);
+            const fails = ok[0].dx.map(d => addLink(k, d)).filter(Boolean); if (n) NAMES[k] = n;
+            if (ed) BUNDLES.splice(BUNDLES.indexOf(ed), 1);
+            saveLists(); saveNames(); saveBundles(); closeSheet(); renderFavManage(); renderSaved();
+            toast('Saved favourite ' + (n ? n + ' (' + splitKey(k).code + ')' : splitKey(k).code) + (fails.length ? '. ' + fails[0] : '')); return;
+          }
+          const rec = { id: ed ? ed.id : 'b' + Date.now().toString(36), name: n, lines: ok.map(x => ({ h: x.h, dx: x.dx.slice() })) };
+          if (ed) BUNDLES[BUNDLES.indexOf(ed)] = rec; else BUNDLES.push(rec);
+          saveBundles(); closeSheet(); renderFavManage(); toast(`Saved bundle ${n} (${ok.length} lines)`); return;
+        }
+        paint();
+      });
+    });
+  }
+  (function () {
+    const list = $('#fmList'); if (!list) return;
+    $('#fmq').addEventListener('input', renderFavManage);
+    $('#fmExp').addEventListener('click', fmExport);
+    $('#fmNew').addEventListener('click', () => fmNewSheet());
+    $('#fmImp').addEventListener('click', () => $('#fmFile').click());
+    $('#fmFile').addEventListener('change', e => { const f = e.target.files[0]; if (f) fmImport(f); e.target.value = ''; });
+    list.addEventListener('click', e => {
+      const b = e.target.closest('[data-fma]'), row = e.target.closest('.fmrow'); if (!row) return;
+      if (row.dataset.fmb) { const id = row.dataset.fmb, x = BUNDLES.find(y => y.id === id), a = b ? b.dataset.fma : 'exp'; if (!x) return;
+        if (a === 'exp') { const ok = 'B:' + id; fmOpen.has(ok) ? fmOpen.delete(ok) : fmOpen.add(ok); }
+        else if (a === 'edit') return fmNewSheet(id);
+        else if (a === 'del') { if (!confirm(`Delete bundle ${x.name} (${x.lines.length} lines)?`)) return; BUNDLES.splice(BUNDLES.indexOf(x), 1); saveBundles(); }
+        return renderFavManage(); }
+      const k = row.dataset.fmk, i = FAVS.indexOf(k), a = b ? b.dataset.fma : 'exp';
+      if (a === 'exp') { fmOpen.has(k) ? fmOpen.delete(k) : fmOpen.add(k); }
+      else if (a === 'up' || a === 'down') { const j = a === 'up' ? i - 1 : i + 1; if (j < 0 || j >= FAVS.length) return; FAVS.splice(i, 1); FAVS.splice(j, 0, k); saveLists(); renderSaved(); }
+      else if (a === 'edit') { const n = prompt('Favourite name for ' + splitKey(k).code + ' (blank = none)', NAMES[k] || ''); if (n == null) return; NAMES[k] = n.trim().slice(0, 80); saveNames(); }
+      else if (a === 'del') { if (!confirm(`Delete favourite ${NAMES[k] ? NAMES[k] + ' (' + splitKey(k).code + ')' : splitKey(k).code}?`)) return; toggleFav(k); saveNames(); }
+      renderFavManage();
+    });
+    new MutationObserver(() => { if ($('#tab-favmanage').classList.contains('on')) renderFavManage(); }).observe($('#tab-favmanage'), { attributes: true, attributeFilter: ['class'] });
+  })();
+
   pickBar();
   boot().then(() => { ready = true; paintTray(); }).catch(err => { document.body.insertAdjacentHTML('afterbegin', '<p class="pad warn">Could not load data files. Serve this folder over http (e.g. python3 -m http.server).</p>'); console.error(err); });
 })();
