@@ -93,6 +93,7 @@
   function sendPick(code, kind) {
     code = String(code || '').trim().toUpperCase();
     if (!PICK.get() || !PICK_CODE.test(code) || (kind !== 'hsc' && kind !== 'dx')) return false;
+    if (kind === 'hsc' && dxPick()) { toast(DXMSG); return false; }   // M1-d: a fee code never goes back into any Dx pick
     toast(`Sending ${code} to MedBilling Logs…`);
     pickReturn('pick', code, kind);
     return true;
@@ -113,6 +114,7 @@
   // "Use … in MedBilling Logs" button on a code page (only in pick mode)
   function pickBtn(kind, code) {
     if (!PICK.get()) return '';
+    if (kind === 'hsc' && dxPick()) return `<p class="pickno" role="note">Diagnosis pick: this is a fee code. Choose an ICD code to send.</p>`;   // M1-e: no Use / Select on fee pages in a Dx pick
     return `<button type="button" class="primary pickuse" data-pick="${esc(kind)}" data-code="${esc(code)}">Use ${esc(code)} in MedBilling Logs</button>` +
       (pickMulti() ? `<button type="button" class="ghost pselb" data-psel="${kind === 'dx' ? 'I' : 'H'}:${esc(code)}" aria-pressed="false">＋ Select</button>` : '');
   }
@@ -145,7 +147,10 @@
     TRAY[t].push({ c, f: f || '' }); return '';
   }
   function trayRemove(t, c) { TRAY[t] = TRAY[t].filter(x => x.c !== c); if (t === 'H') ['I', 'M'].forEach(k => TRAY[k].forEach(x => { if (x.f === c) x.f = ''; })); }
+  const DXMSG = 'Diagnosis pick: choose an ICD code';
+  const dxPick = () => { const p = PICK.get(); return !!(p && p.kind === 'dx'); };   // a Logs Dx pick: fee codes never travel back
   function trayToggle(t, c) {
+    if (t === 'H' && dxPick()) { toast(DXMSG); return; }   // M1-c: no fee code joins a Dx pick's selection
     if (inTray(t, c)) { trayRemove(t, c); traySave(); paintTray(); toast(`${t === 'M' ? 'Modifier ' + c : c} removed from the selection`); return; }
     const m = trayAdd(t, c); traySave(); paintTray(); toast(m || `${t === 'M' ? 'Modifier ' + c : c} selected (${TRAY[t].length} of ${tmax()} ${TWORD[t]}s). Tap Send when ready`, m ? 3200 : 2200);
   }
@@ -158,9 +163,11 @@
     if (own === 'I' && lf) sel[0][2] = lf;   // the diagnosis goes with its (first) linked fee code
     modsOf(key).forEach(k => { const c = splitKey(k).code; if (modOk(c)) sel.push(['M', c, lf]); });
     let added = 0, full = 0;
-    sel.forEach(([t, c, f]) => { const had = inTray(t, c); if (trayAdd(t, c, f)) full++; else if (!had) added++; });
+    if (dxPick()) { for (let i = sel.length - 1; i >= 0; i--) if (sel[i][0] === 'H') sel.splice(i, 1); if (!sel.length) { toast(DXMSG); return 0; } }   // M1-c/M1-d: no fee, not even the tapped one
+    let lnk = 0;   // M1-d: count only the linked codes actually added (not the tapped code, not dropped fees, not ones already there)
+    sel.forEach(([t, c, f], i) => { const had = inTray(t, c); if (trayAdd(t, c, f)) full++; else if (!had) { added++; if (i || t !== own) lnk++; } });
     traySave(); paintTray();
-    toast(`Selected ${sk.code} with its ${sel.length - 1} linked code${sel.length === 2 ? '' : 's'}${full ? ` (${full} not added: ${tmax()} per kind at most)` : ''}. Review, then tap Send`, 3800);
+    toast(`Selected ${sk.code} with ${lnk} linked code${lnk === 1 ? '' : 's'}${full ? ` (${full} not added: ${tmax()} per kind at most)` : ''}. Review, then tap Send`, 3800);
     return added;
   }
   const pselBtn = (t, code) => {
@@ -175,6 +182,7 @@
   }
   function sendMulti(o) {
     if (!pickMulti()) return false;
+    if (dxPick() && o.fee.length) { o.fee = []; }   // M1-d: belt and braces, a Dx pick never carries fee codes
     const n = o.fee.length + o.dx.length + o.mod.length; if (!n) return false;
     o.fee.forEach(c => touchKey(hk(c))); o.dx.forEach(c => touchKey(ik(c))); o.mod.forEach(c => touchKey('M:' + c));   // v38: groups holding these codes were used
     toast(`Sending ${multiLabel(o)} to MedBilling Logs…`);
@@ -372,18 +380,18 @@
     const on = isFav(el.dataset.fav), lab = on ? 'Remove from favourites' : 'Add to favourites';
     el.classList.toggle('on', on); el.textContent = on ? '★' : '☆'; el.setAttribute('aria-pressed', String(on)); el.setAttribute('aria-label', lab); el.title = lab;
   }
-  function toggleFav(key) {
-    const on = !isFav(key);
-    FAVS = on ? [key].concat(FAVS) : FAVS.filter(k => k !== key);
-    if (on) { TS.f[key] = new Date().toISOString(); persistStorage(); } else { delete TS.f[key]; GS.groups.forEach(g => { g.keys = g.keys.filter(k => k !== key); }); }
+  function toggleFav(key, also) {   // also: ICD-saved favourites merged into this row (removed together; see mergeKeys)
+    const on = !isFav(key), drop = on ? [] : [key].concat((also || []).filter(k => k !== key && isFav(k)));
+    FAVS = on ? [key].concat(FAVS) : FAVS.filter(k => !drop.includes(k));
+    if (on) { TS.f[key] = new Date().toISOString(); persistStorage(); } else drop.forEach(d => { delete TS.f[d]; GS.groups.forEach(g => { g.keys = g.keys.filter(k => k !== d); }); });
     // v34: a new favourite goes into the group(s) used last (none = Ungrouped); the quick sheet lets you change that
     if (on && GS.groups.length) GS.last.forEach(id => addToGroup(id, key));
     saveLists();
-    $$('[data-fav]').forEach(el => { if (el.dataset.fav === key) paintStar(el); });
+    $$('[data-fav]').forEach(el => { if (el.dataset.fav === key || drop.includes(el.dataset.fav)) paintStar(el); });
     refreshSaved();
     if (on && GS.groups.length) codeSheet(key, { fresh: true });
     else if (on && canLink(key)) snack(`Added to favourites. Link the ${partnerWord(key, true)} you usually bill with ${splitKey(key).code}? (optional)`, 'Link ' + partnerShort(key), () => linkSheet(key, { fresh: true }));
-    else toast(on ? 'Added to favourites' : 'Removed from favourites');
+    else toast(on ? 'Added to favourites' : drop.length > 1 ? 'Removed from favourites: ' + drop.map(k => splitKey(k).code).join(' + ') : 'Removed from favourites');
   }
   function addRecent(key) {
     RECENT = [key].concat(RECENT.filter(k => k !== key)).slice(0, RECENT_MAX);
@@ -1013,9 +1021,9 @@
     const top = hits[0].score || 1;
     box.innerHTML = hits.map((h, i) => {
       const c = h.doc.c, f = feeFor(c);
-      return `<button class="hit${current === c.code ? ' sel' : ''}" data-code="${esc(c.code)}">
-        <div class="row1"><span class="lft"><span class="code">${esc(c.display || c.code)}</span>${star(hk(c.code))}</span><span class="fee">${f.amount == null ? esc(f.label) : money(f.amount)}</span>${pickDet()}${P ? '' : pselBtn('H', c.code)}</div>
-        <div class="hdesc">${esc(c.desc)}</div>
+      return `<button class="hit${current === c.code ? ' sel' : ''}" data-code="${esc(c.code)}" aria-label="${esc((c.display || c.code) + ' ' + c.desc + ', ' + (f.amount == null ? f.label : money(f.amount)))}">
+        <div class="row1"><span class="lft"><span class="code">${esc(c.display || c.code)}</span><span class="hshort" title="${esc(c.desc)}">${esc(shortOf('H', c.code, c.desc))}</span>${star(hk(c.code))}</span><span class="fee">${f.amount == null ? esc(f.label) : money(f.amount)}</span>${pickDet()}${P ? '' : pselBtn('H', c.code)}</div>
+        <div class="hdesc" aria-hidden="true">${esc(c.desc)}</div>
         <div class="score">#${i + 1} · score ${h.score.toFixed(2)} (${Math.round(100 * h.score / top)}%) · ${esc(f.label)}${c.cat ? ' · cat ' + esc(c.cat) : ''}
         ${c.bulletins && c.bulletins.some(b => !b.superseded) ? ' · <span class="badge b">MED ' + c.bulletins[0].num + '</span>' : ''}</div></button>`;
     }).join('');
@@ -1035,13 +1043,36 @@
     return Object.keys(by).map(id => { const j = JREG.find(x => x.id === id), n = by[id];
       return `<div class="hit compact heldsaved"><span class="cdesc">${esc(j ? jn(j) : id)}: ${n} saved code${n > 1 ? 's' : ''} hidden until permission is granted.</span><button type="button" class="linkbtn" data-dropheld="${esc(id)}">Remove</button></div>`; }).join('');
   }
+  // v42 shared row formatter (js/shared/rowfmt.js, loaded as an ES module by js/shared/boot.js): code · short label · price · [ICD-9]
+  const RF = () => window.MBRowFmt;
+  const shortOf = (t, code, desc) => { const f = RF(); return f ? f.shortLabel(t, code, desc) : (desc || ''); };
+  document.addEventListener('mbrowfmt', () => { try { if (typeof refreshSaved === 'function') refreshSaved(); } catch (e) {} });
+  // S1 merge (display only, Jose OK 2026-10-22): an ICD-saved favourite that leads with fee code H, when H is itself a favourite in
+  // the same list and is linked back to that ICD-9 only (see dup below), would show the very same row twice. Show only the fee-saved row; stored
+  // favourites are untouched. Removal choice: REMOVE BOTH. Un-starring the merged row (its star, or "Remove from favourites" in
+  // its ⋯ menu) removes the fee-saved and the merged ICD-saved favourite together, so the row goes in one tap and the hidden
+  // duplicate never reappears. A star elsewhere (search card, code page) still toggles only its own code.
+  const leadOf = key => { const sk = splitKey(key); return key[0] === 'I' && sk.jur === JUR && !heldJur(sk.jur) && ICDBY[sk.code] ? linksOf(key).find(k => k[0] === 'H' && sameJur(k, key) && BYCODE[splitKey(k).code]) || null : null; };
+  function mergeKeys(keys) {   // -> {keys: shown keys, merged: {feeKey: [ICD-saved keys shown inside it]}}
+    const merged = {}, set = new Set(keys);
+    // duplicate-looking = same fee + same ICD-9 and nothing else on either row: the ICD-9's only fee link is H, H's only ICD-9 link
+    // is that ICD-9, and the ICD-9 has no linked modifiers of its own (those would be lost from view)
+    const dup = (k, l) => set.has(l) && linksOf(k).filter(x => x[0] === 'H').length === 1 && JSON.stringify(linksOf(l).filter(x => x[0] === 'I')) === JSON.stringify([k]) && !modLinksShown(k).length;
+    const shown = keys.filter(k => { const l = leadOf(k); if (l && dup(k, l)) { (merged[l] = merged[l] || []).push(k); return false; } return true; });
+    return { keys: shown, merged };
+  }
+  let MERGED = {};
   function savedRow(key, gid, fav) {   // one compact line: bold code, description truncated with an ellipsis, [linked codes], fee/badge, star (+ ⋯ in Favourites)
     const sk = splitKey(key), code = sk.code;
     if (heldJur(sk.jur)) return '';
     fav = fav || !!gid;
     const menu = fav ? `<span class="rowmenu" role="button" tabindex="0" data-favmenu="${esc(key)}" data-g="${esc(gid || '')}" aria-label="Links, groups and options for ${esc(code)}" title="Linked codes, groups and options">⋯</span>` : '';
-    const lk = fav ? linkChips(key) : '';
-    const line = (attrs, cls, cd, desc, right, title) => `<button class="hit compact${cls}${lk ? ' haslinks' : ''}" ${attrs} data-fk="${esc(key)}"${title ? ` title="${esc(title)}"` : ''}><span class="ccode code">${esc(cd)}</span><span class="cdesc">${esc(desc)}</span>${lk}${right}${!P && sk.jur === JUR && sk.jur === 'AB' ? pselBtn(sk.t, code) : ''}${star(key)}${sk.t === 'H' && sk.jur === JUR ? pickDet() : ''}${menu}</button>`;
+    // code first: an ICD-9 favourite with a linked fee code leads with that fee code; the ICD-9 becomes the chip (display only)
+    const lead = fav && key[0] === 'I' && sk.jur === JUR ? linksOf(key).find(k => k[0] === 'H' && sameJur(k, key) && BYCODE[splitKey(k).code]) : null;
+    const lk = fav ? (lead ? linkChips(key, [key].concat(linksOf(key).filter(k => k !== lead && k[0] === 'H')).concat(modLinksShown(key))) : linkChips(key)) : '';
+    const icdKeys = fav ? (lead ? [key] : linksOf(key)).filter(k => k[0] === 'I') : [];
+    const icdT = icdKeys.length ? ' · ICD-9 ' + icdKeys.map(k => splitKey(k).code + ' ' + shortDesc(k, false)).join('; ') : '';   // S2/(c): ICD-9 full text in title + aria
+    const line = (attrs, cls, cd, desc, right, title, t) => `<button class="hit compact${cls}${lk ? ' haslinks' : ''}${lead ? ' codefirst' : ''}" ${attrs} data-fk="${esc(key)}"${fav && MERGED[key] ? ` data-merged="${esc(MERGED[key].join(' '))}"` : ''}${title ? ` title="${esc(cd + ' ' + title + icdT)}"` : ''} aria-label="${esc(cd + ' ' + (title || desc) + icdT)}"><span class="ccode code">${esc(cd)}</span><span class="cdesc${t ? ' short' : ''}">${esc(t ? shortOf(t, cd, desc) : desc)}</span>${right}${lk}${!P && sk.jur === JUR && sk.jur === 'AB' ? pselBtn(sk.t, code) : ''}${star(key)}${sk.t === 'H' && sk.jur === JUR ? pickDet() : ''}${menu}</button>`;
     if (sk.jur !== JUR) {
       const j = JREG.find(x => x.id === sk.jur), nm = j ? jn(j) : sk.jur;
       return line(`data-jur="${esc(sk.jur)}" data-${sk.t === 'H' ? 'code' : 'icd'}="${esc(code)}"`, ' other', code, `${sk.t === 'H' ? 'Fee code' : 'Diagnostic code'} saved under ${nm}. Tap to switch to ${nm}.`, `<span class="badge j">${esc(nm)}</span>`, 'Opens ' + nm);
@@ -1049,10 +1080,13 @@
     if (key[0] === 'H') {
       const c = BYCODE[code]; if (!c) return '';
       const f = feeFor(c);
-      return line(`data-code="${esc(c.code)}"`, current === c.code ? ' sel' : '', c.display || c.code, c.desc, `<span class="fee">${f.amount == null ? esc(f.label) : money(f.amount)}</span>`, c.desc);
+      return line(`data-code="${esc(c.code)}"`, current === c.code ? ' sel' : '', c.display || c.code, c.desc, `<span class="fee">${f.amount == null ? esc(f.label) : money(f.amount)}</span>`, c.desc, 'H');
     }
+    if (lead) { const c = BYCODE[splitKey(lead).code], f = feeFor(c);
+      // S1 (Jose OK 2026-10-22): an ICD-saved favourite led by its fee code opens / sends that fee code; in a Dx pick it sends the ICD-9
+      return line(`data-icd="${esc(code)}" data-code="${esc(c.code)}" data-lead="1"`, '', c.display || c.code, c.desc, `<span class="fee">${f.amount == null ? esc(f.label) : money(f.amount)}</span>`, c.desc, 'H'); }
     const i = ICDBY[code]; if (!i) return '';
-    return line(`data-icd="${esc(i.code)}"`, '', i.code, icdLabel(i), '<span class="small muted">ICD-9</span>', icdLabel(i));
+    return line(`data-icd="${esc(i.code)}"`, '', i.code, icdLabel(i), '<span class="small muted">ICD-9</span>', icdLabel(i), 'I');
   }
   // text a favourite is matched on by the Favourites filter: code + description (current jurisdiction) + group names
   function favText(key) {
@@ -1080,16 +1114,18 @@
   function shortDesc(key, chip) {   // chip: the code's own title (e.g. "Mild or unspecified pre-eclampsia") unless that alone says too little
     const sk = splitKey(key); if (sk.t === 'M') { const m = MODXBY[sk.code]; return m ? modNice(m.n) : ''; }
     if (sk.jur !== JUR) return '';
-    if (sk.t === 'H') { const c = BYCODE[sk.code]; return c ? c.desc : ''; }
+    if (sk.t === 'H') { const c = BYCODE[sk.code]; return c ? (chip ? shortOf('H', c.code, c.desc) : c.desc) : ''; }
     const i = ICDBY[sk.code]; if (!i) return '';
+    if (chip) return shortOf('I', i.code, i.desc);
     return chip && i.desc && i.desc.length >= 12 && !/^(unspecified|other|not otherwise)/i.test(i.desc) ? i.desc : icdLabel(i);
   }
+  const pickPrice = k => { const sk = splitKey(k), c = sk.t === 'H' && sk.jur === JUR ? BYCODE[sk.code] : null; if (!c) return ''; const f = feeFor(c); return `<span class="fee lkp">${f.amount == null ? esc(f.label) : money(f.amount)}</span>`; };   // prices in pickers (fee codes only)
   const linkCodeTxt = k => { const sk = splitKey(k); return sk.t === 'H' && sk.jur === JUR && BYCODE[sk.code] ? (BYCODE[sk.code].display || sk.code) : sk.code; };
   // compact chips beside a favourite: code + short description of each linked code (tap: open it; in pick mode: send it)
-  function linkChips(key) {
-    const ls = linksOf(key).filter(k => !heldJur(splitKey(k).jur)).concat(modLinksShown(key)); if (!ls.length) return '';
+  function linkChips(key, list) {
+    const ls = list || linksOf(key).filter(k => !heldJur(splitKey(k).jur)).concat(modLinksShown(key)); if (!ls.length) return '';
     const kind0 = key[0] === 'H' ? partnerShort(key) : 'fee code';
-    const chips = ls.map(k => { const d = shortDesc(k, true), c = linkCodeTxt(k), kind = k[0] === 'M' ? 'modifier' : kind0;
+    const chips = ls.map(k => { const d = shortDesc(k, true), c = linkCodeTxt(k), kind = k[0] === 'M' ? 'modifier' : k[0] === 'I' ? 'ICD-9' : kind0;
       return `<span class="lchip k-${k[0]}" role="button" tabindex="0" data-lk="${esc(k)}" title="${esc((k[0] === 'M' ? 'Modifier ' : '') + c + (d ? ' ' + d : ''))}" aria-label="Linked ${esc(kind)} ${esc(c)}${d ? ', ' + esc(d) : ''}"><span class="code">${esc(c)}</span>${d ? `<span class="ld">${esc(d)}</span>` : ''}</span>`; }).join('');
     const edit = canLink(key) || canModLink(key) ? `<span class="lchip ledit" role="button" tabindex="0" data-favlink="${esc(key)}" aria-label="Edit linked codes for ${esc(splitKey(key).code)}" title="Edit linked codes">✎</span>` : '';
     return `<span class="lnks" aria-label="Linked codes"><span class="lnkic" aria-hidden="true">↔</span>${chips}${edit}</span>`;
@@ -1166,12 +1202,12 @@
         inp.setAttribute('aria-label', mode === 'mod' ? 'Search modifiers' : isH ? `Search ${short} codes` : 'Search fee codes');
         const allCur = curC.concat(curM);
         $('#lkCur', el).innerHTML = allCur.length ? allCur.map(k => { const d = shortDesc(k, true), cd = linkCodeTxt(k);
-          return `<div class="lkrow k-${k[0]}" title="${esc(cd + ' ' + shortDesc(k))}"><span class="code">${esc(cd)}</span><span class="lkd">${k[0] === 'M' ? '<span class="lkm">Modifier</span> ' : ''}${esc(d)}</span><button type="button" class="ghost lkrm" data-unlink="${esc(k)}" aria-label="Remove link to ${esc(cd)}">Remove</button></div>`; }).join('')
+          return `<div class="lkrow k-${k[0]}" title="${esc(cd + ' ' + shortDesc(k))}"><span class="code">${esc(cd)}</span><span class="lkd">${k[0] === 'M' ? '<span class="lkm">Modifier</span> ' : ''}${esc(d)}</span>${pickPrice(k)}<button type="button" class="ghost lkrm" data-unlink="${esc(k)}" aria-label="Remove link to ${esc(cd)}">Remove</button></div>`; }).join('')
           : `<p class="muted small lknone">Nothing linked yet${o.fresh ? ' (you can skip this)' : ''}.</p>`;
         const list = q ? search(q) : suggestions();
         $('#lkResH', el).textContent = q ? (list.length ? 'Results' : '') : (list.length ? (mode === 'mod' ? (isH ? 'Explicit modifiers listed for this fee code' : 'Modifiers of its linked fee codes') : isH ? `Your ${short} favourites and suggestions` : 'Your fee code favourites and recent codes') : '');
         $('#lkRes', el).innerHTML = list.length ? list.map(k => { const on = linked(k), d = shortDesc(k, true), cd = linkCodeTxt(k);
-          return `<button type="button" class="lkopt${!on && full ? ' full' : ''}" data-link="${esc(k)}" aria-pressed="${on}" title="${esc(cd + ' ' + shortDesc(k))}"><span class="code">${esc(cd)}</span><span class="lkd">${esc(d)}</span><span class="lkst">${on ? '✓ Linked' : '+ Link'}</span></button>`; }).join('')
+          return `<button type="button" class="lkopt${!on && full ? ' full' : ''}" data-link="${esc(k)}" aria-pressed="${on}" title="${esc(cd + ' ' + shortDesc(k))}"><span class="code">${esc(cd)}</span><span class="lkd">${esc(d)}</span>${pickPrice(k)}<span class="lkst">${on ? '✓ Linked' : '+ Link'}</span></button>`; }).join('')
           : `<p class="muted small lknone">${q ? `No matching ${mode === 'mod' ? 'explicit modifiers' : esc(isH ? word : 'fee codes')}.` : mode === 'mod' ? 'Type a modifier code or a few words above (e.g. CMGP, complex, evening, telehealth).' : `Type a ${isH ? esc(partnerWord(key)) : 'fee code'} or a few words above.`}</p>`;
         $('#lkRes', el).classList.toggle('empty', !list.length);
       };
@@ -1228,7 +1264,8 @@
       if (q && !keys.length && !mods.length) return '';
       shown++;
       const open = q ? true : !GS.collapsed.includes(g.id);
-      const rowList = keys.map(k => savedRow(k, g.id)).filter(Boolean), held = keys.filter(k => heldJur(splitKey(k).jur)).length;
+      const mg = mergeKeys(keys); Object.assign(MERGED, mg.merged);
+      const rowList = mg.keys.map(k => savedRow(k, g.id)).filter(Boolean), held = keys.filter(k => heldJur(splitKey(k).jur)).length;
       const n = rowList.length + held + mods.length, total = q ? g.keys.filter(k => heldJur(splitKey(k).jur) || savedRow(k)).length + allM.length : n;
       const hiddenM = !showM && g.mods.length ? `<p class="muted small fgempty">${g.mods.length} Alberta modifier${g.mods.length === 1 ? '' : 's'} in this group show${g.mods.length === 1 ? 's' : ''} when Alberta is selected.</p>` : '';
       const rows = rowList.join('') + mods.map(m => savedModRow(m, g.id)).join('') + heldSavedRows(keys) + (rowList.length || held || mods.length ? hiddenM : '');
@@ -1245,7 +1282,8 @@
   function renderSaved() {
     const box = $('#results'); box._ctx = null;
     const grouped = GS.groups.length > 0;
-    const fav = grouped ? '' : FAVS.map(k => savedRow(k, '', true)).filter(Boolean).join('') + heldSavedRows(FAVS), rec = RECENT.map(k => savedRow(k)).filter(Boolean).join('') + heldSavedRows(RECENT);
+    MERGED = {}; const mf = grouped ? null : mergeKeys(FAVS); if (mf) MERGED = mf.merged;
+    const fav = grouped ? '' : mf.keys.map(k => savedRow(k, '', true)).filter(Boolean).join('') + heldSavedRows(FAVS), rec = RECENT.map(k => savedRow(k)).filter(Boolean).join('') + heldSavedRows(RECENT);
     const sk = esc(skill === 'BASE' ? 'base' : skill);
     const tools = (FAVS.length >= 2 || grouped) ? `<div class="favtools"><div class="inputwrap fgq"><input id="favq" type="search" enterkeyhint="search" autocapitalize="off" spellcheck="false" placeholder="Filter favourites" aria-label="Filter favourites" value="${esc(favFilter)}"></div>${GS.groups.length >= 2 ? `<div class="fgsort" role="radiogroup" aria-label="Sort groups"><span>Sort</span>${[['az', 'A–Z', 'Alphabetical'], ['recent', 'Recent', 'Most recently used first'], ['custom', 'My order', 'Your own order (Move up / down)']].map(([v, l, t]) => `<button type="button" role="radio" class="fgsortb" data-gsort="${v}" aria-checked="${GS.sort === v}" title="${t}">${l}</button>`).join('')}</div>` : ''}</div>` : '';
     const favBody = grouped ? `<div id="favgroups" class="favgroups">${groupsHtml()}</div>` : (fav || '<p class="muted small pad savedempty">Tap ☆ on any code to keep it here.</p>');
@@ -1334,7 +1372,7 @@
         const mv = e.target.closest('[data-moveto]');
         if (mv) { const to = groupById(mv.dataset.moveto); removeFromGroup(from.id, key); addToGroup(to.id, key); changed(); closeSheet(); toast(`${code} moved to ${to.name}`); return; }
         if (e.target.closest('[data-rmfrom]')) { removeFromGroup(from.id, key); changed(); closeSheet(); toast(`${code} removed from ${from.name}` + (groupsOf(key).length ? '' : ' (now Ungrouped)')); return; }
-        if (e.target.closest('[data-unfav]')) { closeSheet(); if (isFav(key)) toggleFav(key); return; }
+        if (e.target.closest('[data-unfav]')) { closeSheet(); if (isFav(key)) toggleFav(key, o.also); return; }
         if (e.target.closest('[data-newgrp]')) groupEditor(null, id => { addToGroup(id, key); changed(); codeSheet(key, o); });
         if (e.target.closest('[data-linkedit]')) linkSheet(key, { back: () => codeSheet(key, o) });
       });
@@ -1435,7 +1473,7 @@
     const modes = [['fav', 'Favourites'], ['H', 'Fee codes']].concat(canI ? [['I', dxShort]] : [], canM ? [['M', 'Modifiers']] : []);
     let mode = modes.some(m => m[0] === mode0) ? mode0 : favKeys().length ? 'fav' : 'H', q = '';
     const row = k => { const t = codeLabel(k).replace(/<\/?p[^>]*>/g, '');
-      return `<label class="fgopt fgpick" data-t="${esc(favText(k))}"><input type="checkbox" data-key="${esc(k)}"${g.keys.includes(k) ? ' checked' : ''}><span class="fgpl">${t}</span></label>`; };
+      return `<label class="fgopt fgpick" data-t="${esc(favText(k))}"><input type="checkbox" data-key="${esc(k)}"${g.keys.includes(k) ? ' checked' : ''}><span class="fgpl">${t}</span>${pickPrice(k)}</label>`; };
     const favHtml = () => { const ks = favKeys(); return ks.length ? `<div class="inputwrap fgq"><input id="fgPickQ" type="search" placeholder="Filter favourites" aria-label="Filter favourites" autocapitalize="off" spellcheck="false"></div>
       <div class="fgopts fgpicks">${ks.map(row).join('')}</div>` : `<p class="muted small lknone">No favourites yet. Use the Fee codes${canI ? ', ' + esc(dxShort) : ''}${canM ? ' or Modifiers' : ''} tab to find codes.</p>`; };
     const body = `<p class="fgcode">${typeTag(g.type)} <span class="muted" id="fgAddN"></span></p>
@@ -1470,7 +1508,7 @@
         const list = q ? searchCodes(mode, q) : suggestions();
         $('#fgAddResH', el).textContent = q ? (list.length ? 'Results' : '') : (list.length ? 'In this group, your favourites and suggestions' : '');
         $('#fgAddRes', el).innerHTML = list.length ? list.map(k => { const on = inGroup(k), cd = linkCodeTxt(k);
-          return `<button type="button" class="lkopt k-${k[0]}" data-gadd="${esc(k)}" aria-pressed="${on}" title="${esc(cd + ' ' + shortDesc(k))}"><span class="code">${esc(cd)}</span><span class="lkd">${esc(shortDesc(k, true))}</span><span class="lkst">${on ? '✓ In group' : '+ Add'}</span></button>`; }).join('')
+          return `<button type="button" class="lkopt k-${k[0]}" data-gadd="${esc(k)}" aria-pressed="${on}" title="${esc(cd + ' ' + shortDesc(k))}"><span class="code">${esc(cd)}</span><span class="lkd">${esc(shortDesc(k, true))}</span>${pickPrice(k)}<span class="lkst">${on ? '✓ In group' : '+ Add'}</span></button>`; }).join('')
           : `<p class="muted small lknone">${q ? 'No matching codes.' : mode === 'M' ? 'Type a modifier code or a few words above (e.g. CMGP, evening, complex).' : 'Type a code or a few words above.'}</p>`;
         $('#fgAddRes', el).classList.toggle('empty', !list.length);
       };
@@ -2188,7 +2226,11 @@
       try { const ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); const ok = document.execCommand('copy'); ta.remove(); if (ok && note) toast(note); return ok; } catch (e2) { return false; }
     }
   }
-  let tt; function toast(t) { const el = $('#toast'); el.textContent = t; el.hidden = false; clearTimeout(tt); tt = setTimeout(() => el.hidden = true, 2200); }
+  // M1-e: honours its duration; sized to the sticky app bar so it lies over the bar, never over list rows
+  let tt; function toast(t, ms) { const el = $('#toast'), top = $('.top'); if (top) document.documentElement.style.setProperty('--toph', Math.max(44, Math.round(top.getBoundingClientRect().height)) + 'px');
+    el.textContent = t; el.hidden = false; clearTimeout(tt); tt = setTimeout(() => el.hidden = true, ms > 0 ? ms : 2200); }
+  // M1-e: brief shake + highlight on a row that can't be picked here (a fee row in a Dx pick)
+  function nope(el) { if (!el) return; el.classList.remove('nope'); void el.offsetWidth; el.classList.add('nope'); setTimeout(() => el.classList.remove('nope'), 700); }
 
   function wire() {
     $('#moreBtn').addEventListener('click', e => { e.stopPropagation(); const m = $('#moreMenu'); m.hidden = !m.hidden; $('#moreBtn').setAttribute('aria-expanded', String(!m.hidden)); });
@@ -2227,6 +2269,7 @@
       const b = e.target.closest('.hit'); if (!b) return;
       if (b.dataset.gmod) { const m = b.dataset.gmod; touchKey('M:' + m); if (JUR === 'AB') { showTab('modifiers'); $('#mf').value = m; renderMods(); history.replaceState(null, '', '#/modifiers/' + encodeURIComponent(m)); window.scrollTo(0, 0); } return; }
       if (b.dataset.jur) { switchJur(b.dataset.jur, b.dataset.icd ? '#/medres/' + b.dataset.icd : '#/code/' + b.dataset.code); return; }
+      if (b.dataset.lead && b.dataset.code) { showCode(b.dataset.code); return; }
       if (b.dataset.icd) showMedRes(b.dataset.icd); else showCode(b.dataset.code);
     });
     $('#impFile').addEventListener('change', e => { const f = e.target.files && e.target.files[0]; if (f) importSaved(f); });
@@ -2255,12 +2298,15 @@
   // with linked codes pre-selects its linked set; otherwise a tap sends that one code, as before (pickTap).
   function pickTap(code, kind) {
     code = String(code || '').trim().toUpperCase();
+    if (kind === 'hsc' && dxPick()) { toast(DXMSG); return true; }   // M1-d: refuse fee codes in any Dx pick (single or multi)
     if (!pickMulti()) { if (kind !== 'mod') touchKey(kind === 'dx' ? ik(code) : hk(code)); return kind === 'mod' ? false : sendPick(code, kind); }
     const t = kind === 'dx' ? 'I' : kind === 'mod' ? 'M' : 'H';
     if (t === 'M' && !modOk(code)) return false;
     if (trayN()) { trayToggle(t, code); return true; }
     const key = t === 'H' ? hk(code) : t === 'I' ? ik(code) : '';
     touchKey(key || 'M:' + code);
+    // M1-b: in a Logs Dx pick (pick=dx) an ICD-9 favourite with linked codes sends only its ICD-9; the fee+ICD-9 tray never opens, so no fee goes into a Dx pick
+    const pk = PICK.get(); if (t === 'I' && pk && pk.kind === 'dx') return sendPick(code, kind);
     if (key && isFav(key) && (linksOf(key).some(k => splitKey(k).jur === JUR) || modsOf(key).some(m => modOk(m.slice(2))))) { trayLinked(key); return true; }
     if (t === 'M') return sendMulti({ fee: [], dx: [], dxFor: [], mod: [code], modFor: [''] });
     return sendPick(code, kind);
@@ -2276,7 +2322,7 @@
     const t = e.target; if (!t.closest) return;
     const stop = () => { e.preventDefault(); e.stopPropagation(); };
     if (t.closest('#picktray')) return;
-    const ps = t.closest('[data-psel]'); if (ps) { stop(); const k = pselKey(ps.dataset.psel); if (k) trayToggle(k[0], k[1]); return; }
+    const ps = t.closest('[data-psel]'); if (ps) { stop(); const k = pselKey(ps.dataset.psel); if (k && k[0] === 'H' && dxPick()) nope(ps.closest('.hit')); if (k) trayToggle(k[0], k[1]); return; }
     const b = t.closest('[data-pick]'); if (b) { stop(); pickTap(b.dataset.code, b.dataset.pick); return; }
     // v35 linked chip: sends that one code (ICD-9 -> Dx; fee code when picking a fee code); v36 multi-code: also modifiers, and adds to a selection
     const lc = t.closest('[data-lk]');
@@ -2286,18 +2332,21 @@
     const ir = t.closest('.icdrow'); if (ir && ir.dataset.icd) { stop(); pickTap(ir.dataset.icd, 'dx'); return; }
     const h = t.closest('#results .hit');
     const hscOk = p.kind === 'hsc' || (pickMulti() && trayN());   // picking a Dx: a fee row opens its details, unless a selection is under way
-    if (h) { if (h.dataset.jur) return; if (h.dataset.gmod) { if (pickMulti() && modOk(h.dataset.gmod)) { stop(); pickTap(h.dataset.gmod, 'mod'); } return; } if (h.dataset.icd) { stop(); pickTap(h.dataset.icd, 'dx'); } else if (h.dataset.code && hscOk) { stop(); pickTap(h.dataset.code, 'hsc'); } return; }
+    // M1-e: a fee row in a Dx pick: toast + shake, nothing sent or selected (its ⓘ details control still opens the page)
+    if (h && dxPick() && !h.dataset.jur && !h.dataset.gmod && !h.dataset.merged && !h.dataset.icd && h.dataset.code && BYCODE[h.dataset.code]) { stop(); toast(DXMSG); nope(h); return; }
+    if (h) { if (h.dataset.jur) return; if (h.dataset.gmod) { if (pickMulti() && modOk(h.dataset.gmod)) { stop(); pickTap(h.dataset.gmod, 'mod'); } return; } if (h.dataset.lead && h.dataset.code && hscOk) { stop(); pickTap(h.dataset.code, 'hsc'); } else if (h.dataset.merged && !hscOk) { stop(); pickTap(splitKey(h.dataset.merged.split(' ')[0]).code, 'dx'); } else if (h.dataset.icd) { stop(); pickTap(h.dataset.icd, 'dx'); } else if (h.dataset.code && hscOk) { stop(); pickTap(h.dataset.code, 'hsc'); } return; }
     const a = t.closest('#pricelist a.code'); if (a && hscOk) { const m = (a.getAttribute('href') || '').match(/^#\/code\/(.+)$/); if (m && BYCODE[decodeURIComponent(m[1])]) { stop(); pickTap(decodeURIComponent(m[1]), 'hsc'); } return; }
-    if (t.closest('#detail .codebig') && current) { stop(); pickTap(current, 'hsc'); return; }
+    if (t.closest('#detail .codebig') && current) { stop(); if (hscOk && !dxPick()) pickTap(current, 'hsc'); else if (dxPick()) toast(DXMSG); return; }   // M1-d B1
     const mc = t.closest('#tab-medres .condhead h2 .code'); if (mc) { stop(); pickTap(mc.textContent, 'dx'); }
   }, true);
   document.addEventListener('keydown', e => { const s = e.target.closest && e.target.closest('[data-psel]'); if (!s || (e.key !== 'Enter' && e.key !== ' ')) return; e.preventDefault(); e.stopPropagation(); if (ready) s.click(); }, true);
   document.addEventListener('keydown', e => { const d = e.target.closest && e.target.closest('.pdet'); if (d && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); const h = d.closest('.hit'); if (h && h.dataset.code) showCode(h.dataset.code); } });
   // Star toggles run in the capture phase so a tap never opens the row, card or link underneath.
-  document.addEventListener('click', e => { const s = e.target.closest && e.target.closest('[data-fav]'); if (!s) return; e.preventDefault(); e.stopPropagation(); if (ready) toggleFav(s.dataset.fav); }, true);
-  document.addEventListener('keydown', e => { const s = e.target.closest && e.target.closest('[data-fav]'); if (!s || (e.key !== 'Enter' && e.key !== ' ')) return; e.preventDefault(); e.stopPropagation(); if (ready) toggleFav(s.dataset.fav); }, true);
+  document.addEventListener('click', e => { const s = e.target.closest && e.target.closest('[data-fav]'); if (!s) return; e.preventDefault(); e.stopPropagation(); if (ready) toggleFav(s.dataset.fav, mergedOf(s, s.dataset.fav)); }, true);
+  document.addEventListener('keydown', e => { const s = e.target.closest && e.target.closest('[data-fav]'); if (!s || (e.key !== 'Enter' && e.key !== ' ')) return; e.preventDefault(); e.stopPropagation(); if (ready) toggleFav(s.dataset.fav, mergedOf(s, s.dataset.fav)); }, true);
+  function mergedOf(el, key) { const r = el.closest('[data-merged]'); return r && r.dataset.fk === key ? r.dataset.merged.split(' ') : []; }
   // ⋯ on a favourite inside a group: groups for that code (capture phase, so the row underneath doesn't open)
-  const favMenu = s => { if (ready) codeSheet(s.dataset.favmenu, { from: s.dataset.g }); };
+  const favMenu = s => { if (ready) codeSheet(s.dataset.favmenu, { from: s.dataset.g, also: mergedOf(s, s.dataset.favmenu) }); };
   document.addEventListener('click', e => { const s = e.target.closest && e.target.closest('[data-favmenu]'); if (!s) return; e.preventDefault(); e.stopPropagation(); favMenu(s); }, true);
   document.addEventListener('keydown', e => { const s = e.target.closest && e.target.closest('[data-favmenu]'); if (!s || (e.key !== 'Enter' && e.key !== ' ')) return; e.preventDefault(); e.stopPropagation(); favMenu(s); }, true);
   // v38: ⋯ on a modifier inside a code group
@@ -2348,6 +2397,10 @@
   const saveNames = () => { Object.keys(NAMES).forEach(k => { if (!FAVS.includes(k) || !NAMES[k]) delete NAMES[k]; }); LS.set('favnames', JSON.stringify(NAMES)); };
   const fmOpen = new Set();
   function fmDesc(key) { const sk = splitKey(key); if (sk.jur !== JUR) return ''; if (sk.t === 'H') return BYCODE[sk.code] ? BYCODE[sk.code].desc : ''; return ICDBY[sk.code] ? icdLabel(ICDBY[sk.code]) : ''; }
+  function fmLine(h, dx) {   // bundle line: code · short label · price · [ICD-9]
+    const sk = splitKey(h), c = sk.jur === JUR ? BYCODE[sk.code] : null, f = c ? feeFor(c) : null, d = fmDesc(h);
+    return `<b>${esc(c ? c.display || c.code : sk.code)}</b> <span title="${esc(d)}" aria-label="${esc(d)}">${esc(shortOf('H', sk.code, d))}</span>${f ? ` <span class="fee">${f.amount == null ? esc(f.label) : money(f.amount)}</span>` : ''}${dx.length ? ` <span class="muted">[${esc(dx.map(x => splitKey(x).code).join(', '))}]</span>` : ''}`;
+  }
   function renderFavManage() {
     const box = $('#fmList'); if (!box) return;
     const q = ($('#fmq').value || '').trim().toLowerCase();
@@ -2355,7 +2408,7 @@
     const shown = keys.filter(k => !q || ((NAMES[k] || '') + ' ' + favText(k)).toLowerCase().includes(q));
     const bq = BUNDLES.filter(x => !q || (x.name + ' ' + x.lines.map(l => splitKey(l.h).code + ' ' + l.dx.map(d => splitKey(d).code).join(' ')).join(' ')).toLowerCase().includes(q));
     const bRows = bq.map(x => { const op = fmOpen.has('B:' + x.id), f = x.lines[0];
-      return `<div class="fmrow fmb" data-fmb="${esc(x.id)}"><button type="button" class="fmexp" data-fma="exp" aria-expanded="${op}" aria-label="Show all lines">${op ? '▴' : '▾'}</button><span class="fmname">${esc(x.name)}</span><span class="code fmcode">${esc(splitKey(f.h).code)} <span class="badge">+${x.lines.length - 1}</span></span><span class="fmdx">${esc(f.dx.map(d => splitKey(d).code).join(', '))}</span><span class="fmact"><button type="button" data-fma="edit" aria-label="Edit bundle" title="Edit">✎</button><button type="button" data-fma="del" aria-label="Delete bundle" title="Delete">✕</button></span>${op ? `<div class="fmdesc small">${x.lines.map((l, i) => `${i + 1}. <b>${esc(splitKey(l.h).code)}</b> ${esc(fmDesc(l.h))}${l.dx.length ? ` <span class="muted">· ICD-9 ${esc(l.dx.map(d => splitKey(d).code).join(', '))}</span>` : ''}`).join('<br>')}</div>` : ''}</div>`; }).join('');
+      return `<div class="fmrow fmb" data-fmb="${esc(x.id)}"><button type="button" class="fmexp" data-fma="exp" aria-expanded="${op}" aria-label="Show all lines">${op ? '▴' : '▾'}</button><span class="fmname">${esc(x.name)}</span><span class="code fmcode">${esc(splitKey(f.h).code)} <span class="badge">+${x.lines.length - 1}</span></span><span class="fmdx">${esc(f.dx.map(d => splitKey(d).code).join(', '))}</span><span class="fmact"><button type="button" data-fma="edit" aria-label="Edit bundle" title="Edit">✎</button><button type="button" data-fma="del" aria-label="Delete bundle" title="Delete">✕</button></span>${op ? `<div class="fmdesc small">${x.lines.map((l, i) => `${i + 1}. ${fmLine(l.h, l.dx)}`).join('<br>')}</div>` : ''}</div>`; }).join('');
     if (!keys.length && !BUNDLES.length) { box.innerHTML = '<p class="muted pad">No favourites yet. Tap + New favourite (one code or a bundle of lines), tap ☆ beside any code, or import a CSV.</p>'; return; }
     box.innerHTML = `<div class="fmhead"><span>Name</span><span>Code</span><span>ICD-9</span><span></span></div>` + bRows + (shown.map(k => {
       const sk = splitKey(k), i = FAVS.indexOf(k), op = fmOpen.has(k);
@@ -2417,7 +2470,7 @@
       <div class="fgacts"><button type="button" class="ghost" data-close>Cancel</button><button type="button" class="primary" id="nfSave">Save favourite</button></div>`;
     openSheet('fmNewSheet', ed ? '★ Edit favourite' : '★ New favourite', body, el => {
       const chip = (k, attr) => `<div class="lkrow k-${k[0]}"><span class="code">${esc(splitKey(k).code)}</span><span class="lkd">${esc(shortDesc(k, true))}</span><button type="button" class="ghost lkrm" ${attr}>${k[0] === 'H' ? 'Change' : 'Remove'}</button></div>`;
-      const opt = (k, on, attr) => `<button type="button" class="lkopt" ${attr}="${esc(k)}" aria-pressed="${on}"><span class="code">${esc(splitKey(k).code)}</span><span class="lkd">${esc(shortDesc(k, true))}</span><span class="lkst">${on ? '✓' : '+'}</span></button>`;
+      const opt = (k, on, attr) => `<button type="button" class="lkopt" ${attr}="${esc(k)}" aria-pressed="${on}"><span class="code">${esc(splitKey(k).code)}</span><span class="lkd">${esc(shortDesc(k, true))}</span>${pickPrice(k)}<span class="lkst">${on ? '✓' : '+'}</span></button>`;
       const paint = () => {
         $('#nfLines', el).innerHTML = lines.map((l, i) => `<div class="nfline" data-li="${i}"><div class="nflh"><b>Line ${i + 1}</b>${lines.length > 1 ? `<button type="button" class="ghost nfx" data-nfdel aria-label="Remove line ${i + 1}">✕</button>` : ''}</div>
           ${l.h ? chip(l.h, 'data-nfun') : `<div class="inputwrap fgq"><input class="nfq" type="search" autocapitalize="off" spellcheck="false" placeholder="Fee code: search by code or words" aria-label="Search fee codes, line ${i + 1}"></div><div class="fgopts lkres nfres"></div>`}
