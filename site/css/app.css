@@ -526,3 +526,59 @@ html.phone .hit.compact .lchip::after{inset:-10px -1px}
 .fmtools .fmnew{font-weight:700;white-space:nowrap}
 @media (max-width:600px){.fmtools .fmnew{flex:1 1 100%}}
 .nfline{border:1px solid var(--line,#ddd);border-radius:10px;padding:8px;margin:8px 0}.nflh{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}.nfadd{margin:4px 0 8px}.fmb .badge{font-size:.75em}
+/* v42 code-first rows: code · short label · price · [ICD-9] */
+.hit .lft{min-width:0}
+.hit .hshort{margin:0 6px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.hit.compact .fee{flex:0 0 auto}
+.hit.compact.codefirst .lnks{flex-wrap:nowrap;overflow:hidden}.hit.compact.codefirst .lchip{min-width:0;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* v42 S4: short labels never truncate; the chips give way and take the ellipsis */
+.hit.compact .cdesc.short{flex:0 0 auto;overflow:visible;text-overflow:clip}
+@media (max-width:600px){.hit.compact .cdesc.short{flex:0 1 auto;min-width:min-content;white-space:normal;overflow-wrap:normal;word-break:keep-all;line-height:1.2}}
+.hit.compact .cdesc.short~.lnks{flex:0 1 auto;min-width:0;max-width:none;flex-wrap:nowrap;overflow:hidden}
+.hit.compact .cdesc.short~.lnks .lchip{min-width:1.5em;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hit .row1 .code{flex:0 0 auto;white-space:nowrap}
+.hit .hshort{flex:0 1 auto;min-width:min-content;overflow:visible;text-overflow:clip;white-space:normal;overflow-wrap:normal;word-break:keep-all}
+@media (max-width:600px){.hit .row1{flex-wrap:wrap;row-gap:2px}.hit .row1 .lft{min-width:auto;flex:0 1 auto}.hit .hshort{white-space:nowrap}}
+/* pick-safe search cards: the ☆ star and the pick-mode "Details" pill sit on the card edge with their own >=44px hit areas,
+   so a tap anywhere else on the card (incl. its centre) is the row itself -> in pick mode it always returns the pick */
+#results .hit:not(.compact){position:relative;padding-right:52px;min-height:88px}
+#results .hit:not(.compact) .star{position:absolute;top:0;right:0;width:48px;height:44px;margin:0;display:flex;align-items:center;justify-content:center;z-index:1}
+#results .hit:not(.compact) .pdet{position:absolute;right:4px;bottom:4px;margin:0;min-height:44px;min-width:44px;justify-content:center;z-index:1}
+#results .hit:not(.compact):has(.pdet){padding-bottom:52px}
+@media (max-width:600px){html.picking #results .hit.compact{flex-wrap:wrap;row-gap:2px;max-width:100%;min-width:0}html.picking #results .hit.compact .cdesc.short{min-width:0;flex:1 1 auto}}
+.fee.lkp{flex:0 0 auto;font-size:.82rem;font-weight:700;white-space:nowrap;color:var(--ink);margin-left:auto}
+/* v44 (Jose OK 2026-10-22): search cards show no full-description line. .hdesc stays in the DOM (aria-hidden; the full text is in
+   the card's aria-label and the label's title) as an invisible layer under the row, so a tap on it is still the card itself
+   (MedBilling Logs multipick-v9l taps .hdesc). row1 sits above it so ☆, ＋ and Details stay reachable. */
+#results .hit:not(.compact) .hdesc,html.phone #results .hit:not(.compact) .hdesc{position:absolute;inset:0;display:block;opacity:0;overflow:hidden;color:transparent;pointer-events:none;margin:0;padding:0}
+/* M1-b Should: in pick mode on narrow lists the linked chips also show their short label (code + label); the chip takes the
+   ellipsis when space is short, the row's own label is never cut (it keeps its room first) */
+@container (max-width:639.98px){
+  html.picking .hit.compact .lchip:not(.ledit){flex:0 100 auto;min-width:3.6em;max-width:11em;overflow:hidden}
+  html.picking .hit.compact .lchip .ld{display:inline;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}
+/* M1-d: a linked chip never shrinks below its full code. The chip is a two-column grid (code | label) whose minimum is the code
+   alone (label column minmax(0,…)), so on narrow lists (360/375/390) only the label takes the ellipsis, never the code */
+.hit.compact .lchip[data-lk]{display:inline-grid;grid-auto-flow:column;grid-template-columns:max-content minmax(0,max-content);align-items:center;min-width:min-content!important;text-overflow:clip}
+.hit.compact .lchip[data-lk] .code{white-space:nowrap}
+.hit.compact .lchip[data-lk] .ld{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hit.compact .lnks:has(.lchip[data-lk]){min-width:min-content!important;flex-shrink:40}
+/* M1-e: the toast lies over the sticky app bar (top, full width, the bar's height) at every width, so it never covers
+   list rows, the selection tray or the pick bar */
+#toast.toast{top:0;bottom:auto!important;left:0;right:0;transform:none;max-width:none;box-sizing:border-box;height:var(--toph,56px);padding:env(safe-area-inset-top) 14px 0;border-radius:0;display:flex;align-items:center;justify-content:center;text-align:center;font-size:.86rem;line-height:1.25;overflow:hidden;z-index:70}
+#toast.toast[hidden]{display:none}
+/* M1-e: fee row tapped in a Dx pick */
+@keyframes mbnope{0%,100%{transform:translateX(0)}20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
+#results .hit.nope{animation:mbnope .45s ease;box-shadow:0 0 0 2px #dc2626 inset;background:#fef2f2}
+@media (prefers-reduced-motion:reduce){#results .hit.nope{animation:none}}
+.pickno{margin:8px 0;padding:8px 10px;border-radius:8px;background:#fff7ed;color:#9a3412;font-size:.9rem}
+/* M1-e: chip codes keep their full width, so on tight rows the short description gives way: at most two lines
+   (ellipsis on the second), never three, keeping slim rows (≤46/50px phone, ≤40px desktop column) */
+.hit.compact.haslinks .cdesc.short{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+/* M1-e: narrow lists (<400px container: 360/375/390 phones): only the code chips wrap, inside their own chip group
+   (e.g. ✎ under the ICD chip); the row never wraps, so ★ and ⋯ stay on line 1. Wider lists (430 phones, desktop) are unchanged */
+@container (max-width:399.98px){
+  #results .hit.compact.haslinks{gap:4px;padding-left:6px}
+  #results .hit.compact .lnks:has(.lchip[data-lk]){flex-wrap:wrap;row-gap:2px;column-gap:3px;min-width:min-content!important;max-width:none;align-content:center}
+  #results .hit.compact .lnks:has(.lchip[data-lk] ~ .lchip[data-lk] ~ .lchip[data-lk]){min-width:4.7rem!important}
+}
