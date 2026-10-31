@@ -582,3 +582,8 @@ html.phone .hit.compact .lchip::after{inset:-10px -1px}
   #results .hit.compact .lnks:has(.lchip[data-lk]){flex-wrap:wrap;row-gap:2px;column-gap:3px;min-width:min-content!important;max-width:none;align-content:center}
   #results .hit.compact .lnks:has(.lchip[data-lk] ~ .lchip[data-lk] ~ .lchip[data-lk]){min-width:4.7rem!important}
 }
+/* licensor copyright legend (Ontario): visible on each view that shows the licensed material */
+.legend{margin:10px 0;padding:8px 10px;border-top:1px solid rgba(0,0,0,.12);color:var(--muted,#555)}
+.legend p{margin:.2em 0}
+.legend .legendwork{font-weight:600}
+.legend .legendtxt{font-weight:400}

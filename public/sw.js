@@ -1,8 +1,8 @@
 /* Offline cache for MedBilling Fee Desk. Same-origin only; never caches or forwards anything else.
    App shell (HTML/JS/CSS/manifest) is network-first so updates show up immediately; data and icons are
    stale-while-revalidate. Install fetches bypass the HTTP cache so a new version never caches old files. */
-const V = 'mb-v39-2026-10-09';
-const ASSETS = ['./', 'index.html', 'css/app.css', 'js/search.js', 'js/app.js', 'manifest.webmanifest',
+const V = 'mb-v50-20261030-on';
+const ASSETS = ['./', 'index.html', 'css/app.css', 'js/search.js', 'js/app.js', 'js/shared/boot.js', 'js/shared/rowfmt.js', 'js/shared/short-names.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
   'data/meta.json', 'data/codes.json', 'data/rules.json', 'data/modifiers.json', 'data/modifier-search.json', 'data/explanatory.json',
   'data/icd9.json', 'data/bulletins.json', 'data/resources.json', 'data/top-sources.json', 'data/prov/index.json', 'privacy.html', 'support.html', 'terms.html', 'licences.html'];

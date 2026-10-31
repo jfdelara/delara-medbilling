@@ -75,12 +75,16 @@
    "id": "ON",
    "name": "Ontario",
    "group": "prov",
-   "status": "soon",
-   "message": "Permission to republish the official schedule has been requested. No fees are shown until it is granted.",
-   "why": "Ontario permits non-commercial reproduction of the Schedule of Benefits only without changes; a searchable re-presentation needs permission (copyright@ontario.ca).",
+   "status": "live",
+   "file": "ON.json",
+   "effective": "2026-07-01",
+   "effectiveLabel": "Effective 1 July 2026",
+   "counts": {
+    "rows": 5340,
+    "codes": 5340
+   },
    "link": "https://www.ontario.ca/page/ohip-schedule-benefits-and-fees",
-   "linkLabel": "OHIP Schedule of Benefits and Fees (ontario.ca)",
-   "pending": true
+   "linkLabel": "OHIP Schedule of Benefits and Fees (ontario.ca)"
   },
   {
    "id": "PE",

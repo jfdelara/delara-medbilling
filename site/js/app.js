@@ -652,6 +652,7 @@
     RES = res; TOP = top;
     if (D) {
       P = D; P.codeRe = new RegExp(D.meta.codeRe || '^$');
+      if (D.rows.some(r => r.x)) D.rows.forEach(r => { if (r.x) r.d = r.x + ' ' + r.d; });   // Ontario: a printed “- …” item is shown under the line printed above it
       META = { skills: D.meta.skills };
       CODES = provCodes(D);
       ICD = D.meta.dx && D.meta.dx.file ? await get('prov/' + D.meta.dx.file.replace(/\.json$/, '')) : [];
@@ -704,6 +705,12 @@
   // ICD-9-CM (U.S. CMS/NCHS) credit, shown wherever the CMS list is the bundled diagnostic list; app-wide non-endorsement line.
   const ICD9CM_CREDIT = 'https://www.cms.gov/medicare/coding-billing/icd-10-codes/icd-9-cm-diagnosis-procedure-codes-abbreviated-and-full-code-titles';
   const NOT_OFFICIAL = 'Not an official version; not affiliated with or endorsed by any government.';
+  // Copyright legend(s) a licensor requires next to its material (meta.legends: one per licensed work). Shown on every view that displays
+  // that material (results, code detail, fee list, rules, saved lists), not only in the footer. Wording is the licensor's, verbatim.
+  function legendBlock() {
+    const L = P && P.meta.legends; if (!L || !L.length) return '';
+    return `<div class="legend small" role="note" aria-label="Copyright notice">${L.map(l => `<p><span class="legendwork">${esc(l.work)}</span><br><span class="legendtxt">${esc(l.text)}</span></p>`).join('')}</div>`;
+  }
   function sourceNoteHtml() {
     const a = (u, t) => `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(t)}</a>`;
     const icdcm = P && P.meta.dx && P.meta.dx.file === 'dx-icd9cm.json'
@@ -724,7 +731,7 @@
       return `${(m.pending || (JINFO && JINFO.pending)) ? `<p class="small"><b>${esc(pn())}</b></p>` : ''}<p class="small">Source: ${esc(m.publisher)}, ${esc(m.title)}, ${esc(m.effectiveLabel.replace(/^./, ch => ch.toLowerCase()))}. ${a(m.pdf, m.pdfGen ? m.pdfGen.label : 'Official PDF')} · ${a(m.landing, 'source page')}. Edition: ${esc(m.edition)}. Last checked by the app: ${esc(chk(m.checked))}.</p>
         ${m.dx && m.dx.label ? `<p class="small">Diagnostic codes: ${esc(m.dx.label)}. ${m.dx.url ? a(m.dx.url, m.dx.urlLabel || 'source') : ''}</p>` : ''}
         ${m.licence ? `<p class="small">${esc(m.licence.text)}${m.licence.url ? ' ' + a(m.licence.url, 'Licence') : ''}</p>` : ''}
-        ${m.credit ? `<p class="small">${esc(m.credit)}</p>` : ''}
+        ${m.legends ? legendBlock() : m.credit ? `<p class="small">${esc(m.credit)}</p>` : ''}
         ${m.caveat ? `<p class="small caveat">${esc(m.caveat.text)}${m.caveat.url ? ' ' + a(m.caveat.url, m.caveat.urlLabel || 'Updates') : ''}</p>` : ''}
         <p class="small muted">${esc(m.governs || 'Reference only. The official schedule governs if there is any difference.')}</p>`;
     }
@@ -767,7 +774,7 @@
     if (r.f == null && r.an != null && m.anOnlyNote) return { amount: null, label: /unit/.test(r.an) ? r.an : r.an + ' units', note: 'Anaesthesia basic units' };
     if (typeof r.f === 'number') return { amount: r.f, label: '', note: r.fl || '' };
     if (typeof r.f === 'string') return { amount: null, label: TXT[r.f] || r.f, note: /%$/.test(r.f) ? 'Percentage premium' : '' };
-    if (r.pro != null || r.tec != null) return { amount: null, label: [r.pro != null ? 'PRO ' + money(r.pro) : '', r.tec != null ? 'TEC ' + money(r.tec) : ''].filter(Boolean).join(' · '), note: 'Professional and technical components' };
+    if (r.pro != null || r.tec != null) return { amount: null, label: [r.pro != null ? 'PRO ' + money(r.pro) : '', r.tec != null ? 'TEC ' + money(r.tec) : ''].filter(Boolean).join(' · '), note: m.compNote || 'Professional and technical components' };
     return { amount: null, label: 'See document', note: '' };
   }
   function provFee(c, sk) {
@@ -836,6 +843,7 @@
       const sg = suggestIcd(c); $('#icdsugbasis').textContent = ICD.length ? '(' + sg.basis + ')' : ''; renderIcdList($('#icdsug'), ICD.length ? sg.rows : [], ICD.length ? sg.empty : noDxMsg());
       if (!quiet && !window.matchMedia('(min-width:900px)').matches) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
+    if (P) el.insertAdjacentHTML('beforeend', legendBlock());
     if (location.hash !== '#/code/' + c.code) history.replaceState(null, '', '#/code/' + c.code);
   }
   const noDxMsg = () => P && P.meta.dx && P.meta.dx.note ? P.meta.dx.note : 'No diagnostic code list is bundled for this jurisdiction.';
@@ -853,13 +861,14 @@
     $('#pricelist').innerHTML = `<p class="small muted pad">${rows.length.toLocaleString()} of ${CODES.length.toLocaleString()} codes${rows.length > 300 ? ' (first 300 shown; refine the filter)' : ''} · ${esc(P.meta.name)} ${esc(P.meta.title)}, ${esc(P.meta.effectiveLabel.replace(/^./, ch => ch.toLowerCase()))}${P.meta.skills.length ? ' · fees for ' + esc(skillName()) : ''}.</p>
       <table><thead><tr><th>Code</th><th>Description</th><th>Section</th><th>${esc(cols.f || 'Fee')}</th>${cols.au ? `<th>${esc(cols.au)}</th>` : ''}<th>Page</th></tr></thead><tbody>
       ${show.map(c => { const fe = feeFor(c), r = fe.row; return `<tr><td class="nowrap">${star(hk(c.code))}<a class="code" href="#/code/${esc(c.code)}">${esc(c.code)}</a></td><td>${esc(r.d)}</td><td class="small">${esc(r.sn)}</td><td class="fee">${feeTxt(fe)}</td>${cols.au ? `<td>${r.au != null ? esc(r.au) : ''}</td>` : ''}<td class="nowrap">${pdfLink(r.p, r.l, r.l)}</td></tr>`; }).join('')}
-      </tbody></table>`;
+      </tbody></table>` + legendBlock();
+    $('#pricelist').insertAdjacentHTML('afterbegin', legendBlock());
   }
   function provRules() {
     const f = ($('#rf').value || '').trim().toLowerCase();
     const rows = (P.rules || []).filter(r => !f || r.t.toLowerCase().includes(f));
     $('#rules').innerHTML = `<p class="small muted">${esc(P.meta.rulesNote || '')} ${esc(P.meta.name)} ${esc(P.meta.title)}, ${esc(P.meta.effectiveLabel.replace(/^./, ch => ch.toLowerCase()))}. <a target="_blank" rel="noopener noreferrer" href="${esc(P.meta.pdf)}">${esc(P.meta.pdfGen ? P.meta.pdfGen.label : 'Whole PDF')}</a></p>` +
-      rows.map(r => `<div class="rule${r.g === 'h' ? ' rh' : ''}">${r.g === 'h' ? `<b>${esc(r.t)}</b>` : esc(r.t)} ${pdfLink(r.p, r.l, 'p. ' + r.l)}</div>`).join('');
+      legendBlock() + rows.map(r => `<div class="rule${r.g === 'h' ? ' rh' : ''}">${r.g === 'h' ? `<b>${esc(r.t)}</b>` : esc(r.t)} ${pdfLink(r.p, r.l, 'p. ' + r.l)}</div>`).join('');
   }
 
   // ------------------------------------------------------------ boot
@@ -1031,6 +1040,7 @@
       const x = BYCODE['03.08M'];
       box.insertAdjacentHTML('beforeend', `<button class="hit" data-code="03.08M"><div class="row1"><span class="lft"><span class="code">03.08M</span>${star('H:03.08M')}</span><span class="fee">${money(feeFor(x).amount)}</span></div><div>${esc(x.desc)}</div><div class="score">Time add-on (rule-based, not scored): HSC note — claimable with 03.08A/AZ/B/BZ when the consultation exceeds 30 minutes</div></button>`);
     }
+    if (P) box.insertAdjacentHTML('beforeend', legendBlock());
     box._ctx = ctx;
     if (!keepSel && window.matchMedia('(min-width:900px)').matches) showCode(hits[0].doc.c.code, true);
   }
@@ -1296,6 +1306,7 @@
       </div>
       <p class="small muted pad savednote">Saved on this device only. Add to Home Screen on iPhone to keep them safe.</p>
       <p class="muted small pad savedfoot">${P ? (P.meta.skills.length ? `Fees shown for ${esc(P.meta.skillLabel.toLowerCase())} ${esc(skillName())}. ` : '') + `Codes from other provinces or territories are marked; tap one to switch.` : JUR === 'AB' ? `Fees shown for fee skill ${sk}.` : ''} Search runs on this device only; nothing you type is sent anywhere.</p>`;
+    if (P) box.insertAdjacentHTML('beforeend', legendBlock());
     if (!grouped && favFilter) applyFlatFilter();
   }
   const refreshSaved = () => { if (!lastQuery && $('#results .savedh')) renderSaved(); };
@@ -2141,7 +2152,7 @@
   ];
   const effShort = () => shortDate(META.sombEffective);
   function codePrompt(c) {
-    if (P) { const d = (c.desc || '').slice(0, 160), m = P.meta; return { text: `${m.name} ${m.title}, ${m.codeLabel.toLowerCase()} code ${c.code} (${d})${m.skills.length && skill ? ', ' + skillName() : ''}, ${m.effectiveLabel.replace(/^./, ch => ch.toLowerCase())}: explain billing rules, common modifiers and appropriate ${dxName()} diagnostic codes. Verify against the current ${m.name} ${m.title}.`, topic: d }; }
+    if (P) { const d = P.meta.noAiDesc ? '' : (c.desc || '').slice(0, 160), m = P.meta; return { text: `${m.name} ${m.title}, ${m.codeLabel.toLowerCase()} code ${c.code}${d ? ' (' + d + ')' : ''}${m.skills.length && skill ? ', ' + skillName() : ''}, ${m.effectiveLabel.replace(/^./, ch => ch.toLowerCase())}: explain billing rules, common modifiers and appropriate ${dxName()} diagnostic codes. Verify against the current ${m.name} ${m.title}.`, topic: d || `${m.name} ${m.title}` }; }
     const d = (c.desc || '').slice(0, 160);
     return { text: `Alberta SOMB health service code ${c.code} (${d}), fee skill ${skill === 'BASE' ? 'not specified' : skill}, effective ${effShort()}: explain billing rules, common modifiers and appropriate ICD-9 codes. Verify against the current SOMB.`, topic: d };
   }
@@ -2415,7 +2426,7 @@
       const dx = sk.t === 'H' ? linksOf(k).map(x => splitKey(x).code).join(', ') : '';
       const desc = fmDesc(k), lnk = linksOf(k).map(x => `${splitKey(x).code} ${fmDesc(x)}`).join(' · ');
       return `<div class="fmrow" data-fmk="${esc(k)}"><button type="button" class="fmexp" data-fma="exp" aria-expanded="${op}" aria-label="Show description">${op ? '▴' : '▾'}</button><span class="fmname">${esc(NAMES[k] || '—')}</span><span class="code fmcode">${esc(sk.code)}${sk.jur !== JUR ? ` <span class="badge j">${esc(sk.jur)}</span>` : ''}</span><span class="fmdx">${esc(dx || (sk.t === 'I' ? 'ICD-9' : ''))}</span><span class="fmact"><button type="button" data-fma="up" aria-label="Move up"${i <= 0 || q ? ' disabled' : ''}>↑</button><button type="button" data-fma="down" aria-label="Move down"${i >= FAVS.length - 1 || q ? ' disabled' : ''}>↓</button><button type="button" data-fma="edit" aria-label="Rename" title="Edit name">✎</button><button type="button" data-fma="del" aria-label="Delete favourite" title="Delete">✕</button></span>${op ? `<div class="fmdesc small">${esc(desc || 'Saved under ' + sk.jur)}${lnk ? `<br><span class="muted">Linked: ${esc(lnk)}</span>` : ''}</div>` : ''}</div>`;
-    }).join('') || (bRows ? '' : '<p class="muted pad">No favourites match.</p>'));
+    }).join('') || (bRows ? '' : '<p class="muted pad">No favourites match.</p>')) + legendBlock();
   }
   function csvCell(v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
   function parseCsv(t) {
