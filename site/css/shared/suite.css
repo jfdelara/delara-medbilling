@@ -1,0 +1,42 @@
+/* Suite parity v1: shared chrome for Fee Desk and MedBilling Logs (identical file in both apps: css/shared/suite.css).
+   Bottom icon tab bar (always visible), one toast, the shared Settings block, and the labelled "Fee Desk" button.
+   Plain CSS, no build step. Colours come from the suite palette below so both apps look the same. */
+:root{--sp-teal:#1e8078;--sp-teal-d:#17605a;--sp-ink:#1f2933;--sp-muted:#5b6b7d;--sp-line:#d3e0de;--sp-bar:#fbfdfc;--tbh:58px}
+/* ---- bottom tab bar ---- */
+.tabs.sptabs{position:fixed!important;left:0;right:0;bottom:0;top:auto!important;z-index:60;display:flex;gap:2px;margin:0;background:var(--sp-bar);padding:3px 4px calc(3px + env(safe-area-inset-bottom));border-top:1px solid var(--sp-line);border-bottom:0;box-shadow:0 -2px 6px rgba(11,61,56,.08);overflow:visible}
+.tabs.sptabs button{flex:1 1 0;min-width:0;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;border:0;background:transparent;color:#34504b;padding:3px 1px;border-radius:10px;font:500 min(.78rem,3.05vw)/1.15 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;min-height:48px;cursor:pointer;-webkit-tap-highlight-color:transparent;letter-spacing:0}
+.tabs.sptabs button>span{display:block;max-width:100%;white-space:nowrap;overflow:visible;text-align:center}
+.tabs.sptabs button .ti{width:20px;height:20px;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;opacity:.85}
+@media (hover:hover){.tabs.sptabs button:hover{background:#eef6f4;color:#1f3f3a}}
+.tabs.sptabs button:focus-visible{outline:2px solid var(--sp-teal);outline-offset:-2px}
+.tabs.sptabs button.on{background:#e2f1ee;color:var(--sp-teal-d);font-weight:700}
+.tabs.sptabs button.on .ti{opacity:1}
+.tabs.sptabs button.on::after{content:"";position:absolute;left:26%;right:26%;bottom:1px;height:3px;border-radius:3px;background:var(--sp-teal-d)}
+@media (min-width:700px){.tabs.sptabs{justify-content:center;padding-left:8px;padding-right:8px}.tabs.sptabs button{flex:0 1 150px;flex-direction:row;gap:6px;font-size:.92rem}}
+body.sp{padding-bottom:calc(var(--tbh) + 8px)!important}
+/* ---- shared toast: one line over the header, never over the bottom bars (Fee Desk M1-e pattern) ---- */
+#toast.sptoast{position:fixed;top:0;bottom:auto!important;left:0;right:0;transform:none;max-width:none;box-sizing:border-box;min-height:var(--toph,48px);padding:env(safe-area-inset-top) 14px 0;border-radius:0;display:flex;align-items:center;justify-content:center;text-align:center;background:#0f172a;color:#fff;font:.86rem/1.25 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;z-index:70;opacity:1;pointer-events:none}
+#toast.sptoast[hidden]{display:none}
+/* ---- one-line snack with an action: sits above the tab bar ---- */
+.snack.spsnack{bottom:calc(var(--tbh) + 10px)!important;background:#0f172a}
+/* ---- shared Settings block ---- */
+.spset{background:#fff;border:1px solid #e1e6eb;border-radius:12px;padding:10px 12px;margin:8px 0;color:var(--sp-ink);font:15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+.spset h3{margin:0 0 6px;font-size:1rem;color:#24443f}
+.spset .sprow{display:grid;grid-template-columns:minmax(110px,170px) minmax(0,1fr);gap:6px 10px;align-items:center;margin:6px 0}
+.spset .sprow>label{font-weight:600;font-size:.9rem}
+.spset select,.spset input[type=range]{width:100%;min-height:40px;box-sizing:border-box;font-size:15px}
+.spset select{border:1px solid #c9d2db;border-radius:8px;background:#fff;padding:4px 8px}
+.spset .spbtns{display:flex;flex-wrap:wrap;gap:8px}
+.spset .spbtns button{min-height:40px;padding:0 14px;border:1px solid var(--sp-teal);border-radius:999px;background:#fff;color:var(--sp-teal-d);font-weight:600;font-size:.9rem;cursor:pointer}
+.spset .sphelp{margin:2px 0 0;color:var(--sp-muted);font-size:.8rem}
+@media (max-width:420px){.spset .sprow{grid-template-columns:1fr}}
+/* ---- labelled "Fee Desk" button on Logs rows ---- */
+.spfd{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;height:22px;padding:0 6px;margin-left:2px;border:1px solid var(--sp-teal);border-radius:999px;background:#fff;color:var(--sp-teal-d);font:600 11px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;white-space:nowrap;cursor:pointer}
+.spfd:focus-visible{outline:2px solid var(--sp-teal);outline-offset:1px}
+/* ---- Favourites pane: Manage control and footer actions ---- */
+.savedh .spmanage{display:inline-flex;align-items:center;min-height:36px;padding:0 12px;border:1px solid var(--sp-teal);border-radius:999px;background:#fff;color:var(--sp-teal-d);font-size:.85rem;font-weight:600;cursor:pointer}
+.savedh .sph{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.fdfav .spback{margin:6px 0}
+.savedh .spmanage:focus-visible{outline:3px solid var(--sp-teal);outline-offset:2px}
+/* M12: the fee code never wraps (e.g. 03.04A in a pick) */
+.hit.compact .ccode{white-space:nowrap}

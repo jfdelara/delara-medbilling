@@ -1,6 +1,7 @@
 /* MedBilling Fee Desk - app. Static, offline-capable. No analytics, no trackers, no patient data stored. */
 (function () {
   'use strict';
+  const STUDIO_BRAND = 'Medibrisa'; // the one place the studio/brand name lives in app code; no personal name or title on app screens
   const $ = (s, el) => (el || document).querySelector(s);
   const $$ = (s, el) => Array.from((el || document).querySelectorAll(s));
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -221,7 +222,9 @@
   });
 
   // ---- Jurisdiction (province/territory) picked at the top; remembered on this device. Alberta is the default.
-  const JUR = (v => /^[A-Z]{2}$/.test(v) ? v : 'AB')((PICK.get() && PICK.get().jur) || LS.get('jur', 'AB'));   // pick mode: Logs' province for this visit only
+  // privacy-link-b4: BC/ON/QC/NB/NS/PE are not included in this version; a saved one opens Alberta for this visit, but the stored setting and codes are left untouched
+  const REMOVED_JUR = /^(BC|ON|QC|NB|NS|PE)$/;
+  const JUR = (v => /^[A-Z]{2}$/.test(v) && !REMOVED_JUR.test(v) ? v : 'AB')((PICK.get() && PICK.get().jur) || LS.get('jur', 'AB'));   // pick mode: Logs' province for this visit only
   // ---- Favourites and recent codes: kept on this device only (localStorage). Keys are 'H:<HSC>' or 'I:<ICD-9>' for Alberta,
   // 'H:<JUR>|<code>' / 'I:<JUR>|<code>' for other jurisdictions (Alberta keys are unchanged from earlier versions).
   const hk = code => JUR === 'AB' ? 'H:' + code : 'H:' + JUR + '|' + code;
@@ -412,7 +415,9 @@
       favourites: FAVS.map(k => keyToItem(k, TS.f[k])), recent: RECENT.map(k => keyToItem(k, TS.r[k])),
       groups: GS.groups.map(g => ({ name: g.name, type: g.type, codes: g.keys.map(k => keyToItem(k)), ...(g.mods.length ? { mods: g.mods.slice() } : {}), ...(GS.used[g.id] ? { usedAt: GS.used[g.id] } : {}) })), groupSort: GS.sort,
       links: LINKS.map(([h, i]) => ({ hsc: keyToItem(h), icd: keyToItem(i) })),
-      modLinks: MLINKS.map(([k, m]) => ({ code: keyToItem(k), modifier: m.slice(2) })) };
+      modLinks: MLINKS.map(([k, m]) => ({ code: keyToItem(k), modifier: m.slice(2) })),
+      // Suite parity v1: the one shared backup also carries the shared settings (older versions ignore this field)
+      settings: { province: JUR, specialty: skill, textSize: TEXT_SIZES[textSizeIx()] } };
     const d = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const name = `medbilling-fee-desk-favourites-${d}.json`, text = JSON.stringify(data, null, 1);
     const blob = new Blob([text], { type: 'application/json' });
@@ -430,7 +435,7 @@
       if (!x || typeof x.code !== 'string') return null;
       const code = x.code.trim().toUpperCase(), t = x.type === 'ICD9' ? 'I' : 'H';
       const jur = typeof x.jur === 'string' && /^[A-Z]{2}$/.test(x.jur.toUpperCase()) ? x.jur.toUpperCase() : 'AB';
-      if (JREG.length && !JREG.some(j => j.id === jur)) return null;
+      if (JREG.length && !JREG.some(j => j.id === jur) && !REMOVED_JUR.test(jur)) return null;   // privacy-link-b4: codes for removed provinces are kept (hidden), never dropped
       // Codes for the jurisdiction on screen are checked against its data; others are checked when that jurisdiction is opened.
       if (jur === JUR ? (t === 'H' ? !BYCODE[code] : !ICDBY[code]) : !/^[A-Z0-9][A-Z0-9.\-]{0,11}$/.test(code)) return null;
       const at = typeof x.at === 'string' && !isNaN(Date.parse(x.at)) ? new Date(x.at).toISOString() : null;
@@ -455,13 +460,28 @@
     const groups = (Array.isArray(o.groups) ? o.groups : []).map(g => g && typeof g === 'object' && cleanName(g.name)
       ? { name: cleanName(g.name), type: GTYPES[g.type] ? g.type : 'custom', keys: [...new Set(conv(g.codes).map(x => x.key))], mods: gmods(g.mods),
           usedAt: typeof g.usedAt === 'string' && !isNaN(Date.parse(g.usedAt)) ? new Date(g.usedAt).toISOString() : '' } : null).filter(Boolean).slice(0, 500);
-    return { fav: conv(o.favourites), rec: conv(o.recent), groups, links, modLinks, groupSort: GSORTS.includes(o.groupSort) ? o.groupSort : null,
+    const st = o.settings && typeof o.settings === 'object' ? o.settings : null;
+    return { settings: st, fav: conv(o.favourites), rec: conv(o.recent), groups, links, modLinks, groupSort: GSORTS.includes(o.groupSort) ? o.groupSort : null,
       skipped: ((o.favourites || []).length + (o.recent || []).length) };
   }
   function importSaved(file) {
     const r = new FileReader();
     r.onload = () => {
-      let p; try { p = parseImport(String(r.result)); } catch (e) { alert('Import failed: this is not a MedBilling Fee Desk favourites file.'); return; }
+      let p; try { p = parseImport(String(r.result)); } catch (e) { restoreSettings = false; alert('Import failed: this is not a MedBilling Fee Desk favourites file.'); return; }
+      applyParsed(p, file.name, false, restoreSettings);
+    };
+    r.onerror = () => alert('Import failed: the file could not be read.');
+    r.readAsText(file);
+  }
+  // b: shared by the Favourites import (asks with confirm) and Import my data for older backup files (quiet: the shared
+  // preview already asked). Returns a one-line summary, or '' when there was nothing new, or null when cancelled.
+  function applyParsed(p, fileName, quiet, withSettings) {
+    {
+      if (withSettings && p.settings) {   // Settings → Restore: specialty and text size come back too (province stays as chosen)
+        const ts = Number(p.settings.textSize); if (TEXT_SIZES.includes(ts)) { LS.set('textsize', String(ts)); applyTextSize(); const z = $('#spSize'); if (z) z.value = String(textSizeIx()); }
+        const sp = String(p.settings.specialty || ''); if (sp && p.settings.province === JUR && $(`#skill option[value="${CSS.escape(sp)}"]`)) setSkill(sp);
+      }
+      restoreSettings = false;
       const newFav = [...new Set(p.fav.map(x => x.key))].filter(k => !FAVS.includes(k));
       const skipped = p.skipped - p.fav.length - p.rec.length;
       // groups: merged by type + name (case-insensitive); only codes that are favourites after the import are placed
@@ -482,8 +502,8 @@
       const mLine = p.modLinks.length ? `\n• ${mNew} new linked modifier${mNew === 1 ? '' : 's'}` + (mCap ? `, ${mCap} skipped (a code already has ${LMAX} modifiers)` : '') : '';
       const gLine = p.groups.length ? `\n• ${p.groups.length} group${p.groups.length === 1 ? '' : 's'} (${gNew} new), ${gPlace} code${gPlace === 1 ? '' : 's'} placed in groups`
         : (GS.groups.length && newFav.length ? '\n• No groups in this file: new favourites go to Ungrouped' : '');
-      if (!newFav.length && !p.rec.length && !gNew && !gPlace && !lNew && !mNew) { alert('Nothing to import: all favourites in this file are already saved' + (skipped ? ` (${skipped} unknown code${skipped > 1 ? 's' : ''} skipped)` : '') + '.'); return; }
-      if (!confirm(`Import from ${file.name}?\n\n• ${newFav.length} new favourite${newFav.length === 1 ? '' : 's'} (${p.fav.length - newFav.length} already saved)\n• ${p.rec.length} recent code${p.rec.length === 1 ? '' : 's'} merged, newest kept, max ${RECENT_MAX}` + gLine + lLine + mLine + (skipped ? `\n• ${skipped} unknown code${skipped > 1 ? 's' : ''} skipped` : '') + '\n\nExisting favourites, groups and links are kept; nothing is deleted.')) return;
+      if (!newFav.length && !p.rec.length && !gNew && !gPlace && !lNew && !mNew) { if (quiet) return ''; alert('Nothing to import: all favourites in this file are already saved' + (skipped ? ` (${skipped} unknown code${skipped > 1 ? 's' : ''} skipped)` : '') + '.'); return; }
+      if (!quiet && !confirm(`Import from ${fileName}?\n\n• ${newFav.length} new favourite${newFav.length === 1 ? '' : 's'} (${p.fav.length - newFav.length} already saved)\n• ${p.rec.length} recent code${p.rec.length === 1 ? '' : 's'} merged, newest kept, max ${RECENT_MAX}` + gLine + lLine + mLine + (skipped ? `\n• ${skipped} unknown code${skipped > 1 ? 's' : ''} skipped` : '') + '\n\nExisting favourites, groups and links are kept; nothing is deleted.')) return;
       const now = new Date().toISOString();
       p.fav.forEach(x => { if (newFav.includes(x.key) && !TS.f[x.key]) TS.f[x.key] = x.at || now; });
       FAVS = FAVS.concat(newFav);
@@ -500,10 +520,8 @@
       RECENT = order.slice(0, RECENT_MAX).map(x => x.k); TS.r = {}; order.slice(0, RECENT_MAX).forEach(x => { if (x.t) TS.r[x.k] = x.t; });
       saveLists(); persistStorage();
       refreshSaved();
-      toast(`Imported ${newFav.length} favourite${newFav.length === 1 ? '' : 's'}${p.groups.length ? `, ${p.groups.length} group${p.groups.length === 1 ? '' : 's'}` : ''}${lNew + mNew ? `, ${lNew + mNew} link${lNew + mNew === 1 ? '' : 's'}` : ''} and ${p.rec.length} recent`);
-    };
-    r.onerror = () => alert('Import failed: the file could not be read.');
-    r.readAsText(file);
+      const msg = (`Imported ${newFav.length} favourite${newFav.length === 1 ? '' : 's'}${p.groups.length ? `, ${p.groups.length} group${p.groups.length === 1 ? '' : 's'}` : ''}${lNew + mNew ? `, ${lNew + mNew} link${lNew + mNew === 1 ? '' : 's'}` : ''} and ${p.rec.length} recent`); if (!quiet) toast(msg); return msg;
+    }
   }
   const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   const fmtDate = iso => { const [y, m, d] = iso.split('-').map(Number); return `${d} ${MONTHS[m - 1]} ${y}`; };
@@ -515,9 +533,9 @@
   const modNice = n => { const v = String(n || ''); return v && v === v.toUpperCase() ? v.charAt(0) + v.slice(1).toLowerCase() : v; };
   let codeIndex, icdIndex;
   let JREG = [], JINFO = null, P = null;   // registry, this jurisdiction's registry entry, province data (null for Alberta)
-  // Display name: jurisdictions whose permission/licence is still pending carry "(approval pending)". Not used in SI/AI prompts.
-  const jn = j => j ? j.name + (j.pending ? ' (approval pending)' : '') : '';
-  const pn = () => P ? P.meta.name + ((P.meta.pending || (JINFO && JINFO.pending)) ? ' (approval pending)' : '') : '';
+  // Display names of a jurisdiction / the loaded schedule. Not used in SI prompts.
+  const jn = j => j ? j.name : '';
+  const pn = () => P ? P.meta.name : '';
   const SKEY = JUR === 'AB' ? 'skill' : 'skill.' + JUR;
   let skill = LS.get(SKEY, JUR === 'AB' ? 'OBGY' : '');
   // ---- Phone/tablet mode: automatic on touch devices under 1024px wide or a mobile UA; user choice is remembered.
@@ -532,6 +550,12 @@
     if (t) { t.hidden = !(phone || pref === 'desktop' || autoPhone()); t.textContent = phone ? 'Desktop version' : 'Phone version'; }
   }
   applyLayout();
+  // Suite parity v1: text size (shared key mb.textsize, also read by MedBilling Logs)
+  const TEXT_SIZES = [0.85, 0.92, 1, 1.08, 1.16, 1.25, 1.4];
+  const textSizeIx = () => { const v = parseFloat(LS.get('textsize', '1')); const i = TEXT_SIZES.indexOf(v); return i < 0 ? 2 : i; };
+  function applyTextSize() { const v = TEXT_SIZES[textSizeIx()]; document.documentElement.style.fontSize = v === 1 ? '' : (v * 100) + '%'; }
+  applyTextSize();
+  let restoreSettings = false;
   let region = LS.get('region', 'CA');
   let lastQuery = '', current = null;
 
@@ -619,7 +643,7 @@
   }
   function initJur() {
     const sel = $('#jur'), chip = $('#jurChip'); if (!sel) return;
-    const opt = j => `<option value="${esc(j.id)}">${esc(jn(j))}${j.status === 'live' || j.pending ? '' : j.status === 'none' ? ' (no schedule)' : ' (coming soon)'}</option>`;
+    const opt = j => `<option value="${esc(j.id)}">${esc(jn(j))}${j.status === 'live' ? '' : j.status === 'none' ? ' (no schedule)' : ' (coming soon)'}</option>`;
     sel.innerHTML = JREG.filter(j => j.group !== 'terr').map(opt).join('') + (JREG.some(j => j.group === 'terr') ? `<optgroup label="Territories">${JREG.filter(j => j.group === 'terr').map(opt).join('')}</optgroup>` : '');
     [sel, chip].forEach(x => { if (!x) return; x.innerHTML = sel.innerHTML; x.value = JUR; x.addEventListener('change', () => { if (x.value !== JUR) switchJur(x.value, ''); }); });
     const ct = $('#jurChipText'); if (ct) ct.textContent = JINFO && JINFO.id === JUR ? jn(JINFO) : JUR;
@@ -672,14 +696,14 @@
   }
   function applyJurLabels() {
     const name = JINFO ? jn(JINFO) : JUR;
-    const q = $('#q'); if (q) { q.placeholder = P ? `Describe the service or enter a ${P.meta.codeLabel.toLowerCase()} code` : 'Fee codes coming soon'; q.setAttribute('aria-label', 'Service description or code'); }
+    const q = $('#q'); if (q) { q.placeholder = P ? ((window.SPUI && SPUI.SEARCH_PH) || 'Search codes') : 'Fee codes coming soon'; /* v1b M11: one shared placeholder (fits at 360) */ q.setAttribute('aria-label', 'Service description or code'); q.dataset.ph = q.placeholder; fitQph(); }
     $$('[data-tab="price"]').forEach(b => b.textContent = 'Fee list');
     $$('[data-tab="icd9"]').forEach(b => b.textContent = P ? dxName() : 'Diagnostic codes');
     const iq = $('#iq'); if (iq) iq.placeholder = P ? `Search ${dxName()} (e.g. pre-eclampsia, 642.4, V22)` : 'Search diagnostic codes';
     const rf = $('#rf'); if (rf) rf.placeholder = 'Filter rules and sections';
     const pf = $('#pf'); if (pf) pf.placeholder = 'Filter by code, word or section';
-    $$('.skill > span, .skillchip > .small').forEach(e => e.textContent = P && P.meta.skillLabel ? P.meta.skillLabel.replace(/\s*\(.*\)$/, '') : 'Fee skill');
-    $('#skill').setAttribute('aria-label', P && P.meta.skillLabel ? P.meta.skillLabel : 'Fee skill');
+    $$('.skill > span, .skillchip > .small').forEach(e => e.textContent = P && P.meta.skillLabel ? P.meta.skillLabel.replace(/\s*\(.*\)$/, '') : 'Specialty');
+    $('#skill').setAttribute('aria-label', P && P.meta.skillLabel ? P.meta.skillLabel : 'Specialty');
     const lim = $('#limitSkill'); if (lim) { lim.checked = false; lim.disabled = true; }
     const bar = $('#jurbar');
     if (bar) {
@@ -690,7 +714,7 @@
   }
   function soonPanel() {
     const j = JINFO || {};
-    return `<div class="card soon"><h2>${esc(jn(j) || JUR)}</h2><p class="warn">${esc(j.message || '(approval pending)')}</p>${j.why ? `<p class="small">${esc(j.why)}</p>` : ''}
+    return `<div class="card soon"><h2>${esc(jn(j) || JUR)}</h2><p class="warn">${esc(j.message || '')}</p>${j.why ? `<p class="small">${esc(j.why)}</p>` : ''}
       ${j.link ? `<p><a target="_blank" rel="noopener noreferrer" href="${esc(j.link)}">${esc(j.linkLabel || 'Official source')}</a></p>` : ''}
       <p class="small muted">Choose another province or territory at the top. Alberta is the default.</p></div>`;
   }
@@ -721,7 +745,7 @@
     }
     if (P) {
       const m = P.meta;
-      return `${(m.pending || (JINFO && JINFO.pending)) ? `<p class="small"><b>${esc(pn())}</b></p>` : ''}<p class="small">Source: ${esc(m.publisher)}, ${esc(m.title)}, ${esc(m.effectiveLabel.replace(/^./, ch => ch.toLowerCase()))}. ${a(m.pdf, m.pdfGen ? m.pdfGen.label : 'Official PDF')} · ${a(m.landing, 'source page')}. Edition: ${esc(m.edition)}. Last checked by the app: ${esc(chk(m.checked))}.</p>
+      return `<p class="small">Source: ${esc(m.publisher)}, ${esc(m.title)}, ${esc(m.effectiveLabel.replace(/^./, ch => ch.toLowerCase()))}. ${a(m.pdf, m.pdfGen ? m.pdfGen.label : 'Official PDF')} · ${a(m.landing, 'source page')}. Edition: ${esc(m.edition)}. Last checked by the app: ${esc(chk(m.checked))}.</p>
         ${m.dx && m.dx.label ? `<p class="small">Diagnostic codes: ${esc(m.dx.label)}. ${m.dx.url ? a(m.dx.url, m.dx.urlLabel || 'source') : ''}</p>` : ''}
         ${m.licence ? `<p class="small">${esc(m.licence.text)}${m.licence.url ? ' ' + a(m.licence.url, 'Licence') : ''}</p>` : ''}
         ${m.credit ? `<p class="small">${esc(m.credit)}</p>` : ''}
@@ -800,7 +824,7 @@
         <div class="row1"><span class="code codebig">${esc(c.code)}</span>${star(hk(c.code))}${r0.ast ? '<span class="badge">*</span>' : ''}</div>
         <h2>${esc(r0.d)}</h2>${under}${markP}${modsP}
         <div class="pfee"><div class="fee big">${feeTxt(f)}</div><div class="small muted">${feeLabel}${f.note ? ' · ' + esc(f.note) : ''}${extra ? ' · ' + extra : ''}</div><div class="small eff">${esc(pn() || m.name)} · ${esc(m.effectiveLabel)}</div></div>
-        <div class="pbtns"><button type="button" class="ghost" id="pDoc" aria-expanded="false">Document</button><button type="button" class="ghost" id="askCode">Ask SI/AI</button><button type="button" class="ghost" id="pMore">More about this condition</button></div>${pickBtn('hsc', c.code)}
+        <div class="pbtns"><button type="button" class="ghost" id="pDoc" aria-expanded="false">Document</button><button type="button" class="ghost" id="askCode">Ask SI</button><button type="button" class="ghost" id="pMore">More about this condition</button></div>${pickBtn('hsc', c.code)}
         <div id="pDocs" class="links" hidden>${docLinks.join('') || '<span class="muted">No document page listed.</span>'}</div>
         ${c.rows.length > 1 ? `<details><summary>All listings (${c.rows.length})</summary>${rowsHtml}</details>` : ''}
         <h3>Suggested ${esc(dxName())}</h3><p class="small muted" id="icdsugbasis"></p><div id="icdsug" class="picklist"></div>${unitP}${cav}${credit}</div>`;
@@ -825,7 +849,7 @@
           ${extra ? `<div><div class="small muted">${r0.au != null && cols.au ? esc(cols.au) : 'Details'}</div><div class="fee">${r0.au != null && cols.au ? esc(r0.au) + (extraX ? ' · ' + extraX : '') : extraX}</div></div>` : ''}
           <div><div class="small muted">Effective</div><div class="eff">${esc(m.effectiveLabel)}</div></div>
         </div>
-        <div class="row"><button class="ghost" id="askCode">Ask SI/AI</button><button class="ghost" id="copyCode">Copy code</button>${pickBtn('hsc', c.code)}</div>
+        <div class="row"><button class="ghost" id="askCode">Ask SI</button><button class="ghost" id="copyCode">Copy code</button>${pickBtn('hsc', c.code)}</div>
         <h3>In the official document</h3><div class="links">${docLinks.join('') || '<span class="muted">—</span>'}</div>
         <p class="small">Notes, rules and modifiers for this code are on the linked page and in the ${esc(m.title)} rules (<a href="#/rules">Rules tab</a>).</p>
         <h3>${c.rows.length > 1 ? 'All listings (' + c.rows.length + ')' : 'Listing'}</h3>${rowsHtml}
@@ -901,8 +925,7 @@
     const sel = $('#skill'); skillOptions(sel);
     if (!sel.value) { skill = P ? (P.meta.skills.some(s => s.code === P.meta.defaultSkill) ? P.meta.defaultSkill : (P.meta.skills[0] || {}).code || '') : 'OBGY'; sel.value = skill; }
     sel.addEventListener('change', () => setSkill(sel.value));
-    const chip = $('#skillChip'); skillOptions(chip); chip.value = sel.value; $('#skillChipText').textContent = chipText(sel.value);
-    chip.addEventListener('change', () => setSkill(chip.value));
+    const chip = $('#skillChip'); if (chip) { skillOptions(chip); chip.value = sel.value; $('#skillChipText').textContent = chipText(sel.value); chip.addEventListener('change', () => setSkill(chip.value)); }
   }
   function setSkill(v) {
     skill = v; LS.set(SKEY, v);
@@ -921,20 +944,49 @@
     $('#dataline').innerHTML = `Data: SOMB effective ${esc(eff)}, source <a href="${esc(META.albertaCa)}" target="_blank" rel="noopener noreferrer">alberta.ca</a>` +
       ` · <a href="${esc(META.sombDataset)}" target="_blank" rel="noopener noreferrer">SOMB files</a>` +
       ` · ICD-9 supplement as of ${esc(META.icd9.asOf)}` + (newest ? ` · Bulletins to MED ${newest.num} (${esc(newest.date)})` : '') +
-      ` · ${META.counts.codes.toLocaleString()} HSCs`;
+      ` · ${META.counts.codes.toLocaleString()} fee codes`;
     renderSourceNote();
   }
 
   // ------------------------------------------------------------ routing (hash holds only codes, never typed text)
+  // Suite parity v1: one bottom tab bar (Favourites · Procedures · Codes · Settings); the ten reference tabs sit under Codes
+  const CODE_TABS = ['price', 'rules', 'modifiers', 'explanatory', 'icd9', 'bulletins', 'notes', 'resources'];
+  const barKey = n => n === 'favmanage' ? 'fav' : CODE_TABS.includes(n) ? 'codes' : n;
+  function codesSub() {   // the Codes sub-tab last used (one that this province has), else the first one shown
+    const cp = $('#codesPick'), s = LS.get('codesub', ''), vis = b => !!b && getComputedStyle(b).display !== 'none';
+    if (CODE_TABS.includes(s) && (!cp || vis($(`button[data-tab="${s}"]`, cp)))) return s;
+    const f = cp ? $$('button', cp).find(vis) : null; return f ? f.dataset.tab : 'resources';
+  }
   function showTab(name) {
-    $$('.tab').forEach(t => t.classList.toggle('on', t.id === 'tab-' + name));
-    $$('#tabs button, #moreMenu button').forEach(b => b.classList.toggle('on', b.dataset.tab === name));
+    if (name === 'codes') name = codesSub();
+    const fv = name === 'fav', real = fv ? 'procedures' : name, bk = fv ? 'fav' : barKey(name);
+    document.documentElement.classList.toggle('favview', fv);
+    $$('.tab').forEach(t => t.classList.toggle('on', t.id === 'tab-' + real));
+    $$('#tabs button').forEach(b => { const on = b.dataset.tab === bk; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); });
+    const cp = $('#codesPick'); if (cp) { cp.hidden = bk !== 'codes'; $$('button', cp).forEach(b => { const on = b.dataset.tab === name; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); }); }
+    if (CODE_TABS.includes(name)) LS.set('codesub', name);
+  }
+  // Favourites tab: the saved list on its own (search hidden); Logs hands favourites actions over as #/fav/<act>/<key>
+  function openFavTab() {
+    current = null; lastQuery = '';
+    const q = $('#q'); q.value = ''; $('#qclear').hidden = true; $('#results')._ctx = null; doSearch('');
+    const d = $('#detail'); d.hidden = true; d.innerHTML = ''; $('.split').classList.remove('showing');
+    showTab('fav');
+  }
+  function favAction(act, key) {
+    const sel = { menu: k => `#results [data-favmenu="${CSS.escape(k)}"]`, link: k => `#results [data-favlink="${CSS.escape(k)}"]`, unstar: k => `#results .hit[data-fk="${CSS.escape(k)}"] .star[data-fav]`,
+      newgroup: () => '#favNewGrp', import: () => '#impSaved', export: () => '#expSaved' }[act];
+    history.replaceState(null, '', '#/fav');
+    if (!sel) return;
+    setTimeout(() => { const el = $(sel(key || '')); if (el) el.click(); else if (key) toast('That favourite is not in this list.'); }, 30);
   }
   function closeMore() { const m = $('#moreMenu'); if (m) { m.hidden = true; $('#moreBtn').setAttribute('aria-expanded', 'false'); } }
   function route() {
     const h = decodeURIComponent(location.hash.slice(2));
     const [kind, arg] = [h.split('/')[0], h.split('/').slice(1).join('/')];
-    if (kind === 'code' && BYCODE[arg]) { showTab('procedures'); showCode(arg); }
+    if (kind === 'fav') { openFavTab(); if (arg) { const [act, ...k] = arg.split('/'); favAction(act, k.join('/')); } }
+    else if (kind === 'codes' || kind === 'settings') showTab(kind);
+    else if (kind === 'code' && BYCODE[arg]) { showTab('procedures'); showCode(arg); }
     else if (kind === 'rules') { showTab('rules'); if (arg) setTimeout(() => { const el = document.getElementById('gr-' + arg); if (el) el.scrollIntoView({ block: 'start' }); }, 30); }
     else if (kind === 'medres' && ICDBY[arg]) { showMedRes(arg); }
     else if (kind === 'modifiers' && arg && JUR === 'AB') { showTab('modifiers'); $('#mf').value = arg; renderMods(); }
@@ -1017,7 +1069,7 @@
     if (ctx.periods.length) hint.push('Time: ' + ctx.periods.map(p => p === 'DAY' ? 'weekday daytime (no after-hours premium)' : PERIOD_LABEL[p]).join(', '));
     if (ctx.minutes) hint.push(`Duration: ${ctx.over ? 'over ' + (ctx.minutes - 1) : ctx.minutes} min`);
     $('#timehint').textContent = hint.join(' · ');
-    if (!hits.length) { box.innerHTML = P ? `<p class="muted pad">No matching ${esc(P.meta.codeLabel.toLowerCase())} codes in the ${esc(P.meta.name)} schedule. Try other wording or a code.</p>` : '<p class="muted pad">No matching health service codes. Try other wording or an HSC.</p>'; return; }
+    if (!hits.length) { box.innerHTML = P ? `<p class="muted pad">No matching ${esc(P.meta.codeLabel.toLowerCase())} codes in the ${esc(P.meta.name)} schedule. Try other wording or a code.</p>` : '<p class="muted pad">No matching health service codes. Try other wording or a fee code.</p>'; return; }
     const top = hits[0].score || 1;
     box.innerHTML = hits.map((h, i) => {
       const c = h.doc.c, f = feeFor(c);
@@ -1039,9 +1091,10 @@
   // Saved codes from a jurisdiction whose data is not served (permission pending) are never shown; one line per jurisdiction says so.
   const heldJur = id => { if (id === 'AB') return false; const j = JREG.find(x => x.id === id); return !j || j.status !== 'live'; };
   function heldSavedRows(list) {
-    const by = {}; list.forEach(k => { const id = splitKey(k).jur; if (heldJur(id)) by[id] = (by[id] || 0) + 1; });
+    const by = {}; let gone = 0; list.forEach(k => { const id = splitKey(k).jur; if (REMOVED_JUR.test(id)) gone++; else if (heldJur(id)) by[id] = (by[id] || 0) + 1; });
+    // privacy-link-b5 (Eng CEO): removed provinces are reported by ONE notice for the whole saved view (removedNotice), never per group
     return Object.keys(by).map(id => { const j = JREG.find(x => x.id === id), n = by[id];
-      return `<div class="hit compact heldsaved"><span class="cdesc">${esc(j ? jn(j) : id)}: ${n} saved code${n > 1 ? 's' : ''} hidden until permission is granted.</span><button type="button" class="linkbtn" data-dropheld="${esc(id)}">Remove</button></div>`; }).join('');
+      return `<div class="hit compact heldsaved"><span class="cdesc">${esc(j ? jn(j) : id)}: ${n} saved code${n > 1 ? 's' : ''} hidden.</span><button type="button" class="linkbtn" data-dropheld="${esc(id)}">Remove</button></div>`; }).join('');
   }
   // v42 shared row formatter (js/shared/rowfmt.js, loaded as an ES module by js/shared/boot.js): code · short label · price · [ICD-9]
   const RF = () => window.MBRowFmt;
@@ -1072,7 +1125,9 @@
     const lk = fav ? (lead ? linkChips(key, [key].concat(linksOf(key).filter(k => k !== lead && k[0] === 'H')).concat(modLinksShown(key))) : linkChips(key)) : '';
     const icdKeys = fav ? (lead ? [key] : linksOf(key)).filter(k => k[0] === 'I') : [];
     const icdT = icdKeys.length ? ' · ICD-9 ' + icdKeys.map(k => splitKey(k).code + ' ' + shortDesc(k, false)).join('; ') : '';   // S2/(c): ICD-9 full text in title + aria
-    const line = (attrs, cls, cd, desc, right, title, t) => `<button class="hit compact${cls}${lk ? ' haslinks' : ''}${lead ? ' codefirst' : ''}" ${attrs} data-fk="${esc(key)}"${fav && MERGED[key] ? ` data-merged="${esc(MERGED[key].join(' '))}"` : ''}${title ? ` title="${esc(cd + ' ' + title + icdT)}"` : ''} aria-label="${esc(cd + ' ' + (title || desc) + icdT)}"><span class="ccode code">${esc(cd)}</span><span class="cdesc${t ? ' short' : ''}">${esc(t ? shortOf(t, cd, desc) : desc)}</span>${right}${lk}${!P && sk.jur === JUR && sk.jur === 'AB' ? pselBtn(sk.t, code) : ''}${star(key)}${sk.t === 'H' && sk.jur === JUR ? pickDet() : ''}${menu}</button>`;
+    const FR = window.MBFav;
+    const line = (attrs, cls, cd, desc, right, title, t) => FR ? FR.rowShell({ key, cls, attrs, merged: fav && MERGED[key] ? MERGED[key].join(' ') : '', cd, title, desc, icdT, label: t ? shortOf(t, cd, desc) : desc, short: !!t, right, lk, codefirst: !!lead,
+      tail: (!P && sk.jur === JUR && sk.jur === 'AB' ? pselBtn(sk.t, code) : '') + star(key) + (sk.t === 'H' && sk.jur === JUR ? pickDet() : '') + menu }) : `<button class="hit compact${cls}${lk ? ' haslinks' : ''}${lead ? ' codefirst' : ''}" ${attrs} data-fk="${esc(key)}"${fav && MERGED[key] ? ` data-merged="${esc(MERGED[key].join(' '))}"` : ''}${title ? ` title="${esc(cd + ' ' + title + icdT)}"` : ''} aria-label="${esc(cd + ' ' + (title || desc) + icdT)}"><span class="ccode code">${esc(cd)}</span><span class="cdesc${t ? ' short' : ''}">${esc(t ? shortOf(t, cd, desc) : desc)}</span>${right}${lk}${!P && sk.jur === JUR && sk.jur === 'AB' ? pselBtn(sk.t, code) : ''}${star(key)}${sk.t === 'H' && sk.jur === JUR ? pickDet() : ''}${menu}</button>`;
     if (sk.jur !== JUR) {
       const j = JREG.find(x => x.id === sk.jur), nm = j ? jn(j) : sk.jur;
       return line(`data-jur="${esc(sk.jur)}" data-${sk.t === 'H' ? 'code' : 'icd'}="${esc(code)}"`, ' other', code, `${sk.t === 'H' ? 'Fee code' : 'Diagnostic code'} saved under ${nm}. Tap to switch to ${nm}.`, `<span class="badge j">${esc(nm)}</span>`, 'Opens ' + nm);
@@ -1125,8 +1180,11 @@
   function linkChips(key, list) {
     const ls = list || linksOf(key).filter(k => !heldJur(splitKey(k).jur)).concat(modLinksShown(key)); if (!ls.length) return '';
     const kind0 = key[0] === 'H' ? partnerShort(key) : 'fee code';
+    const FR = window.MBFav;
     const chips = ls.map(k => { const d = shortDesc(k, true), c = linkCodeTxt(k), kind = k[0] === 'M' ? 'modifier' : k[0] === 'I' ? 'ICD-9' : kind0;
+      if (FR) return FR.chipHtml(k, c, d, kind);
       return `<span class="lchip k-${k[0]}" role="button" tabindex="0" data-lk="${esc(k)}" title="${esc((k[0] === 'M' ? 'Modifier ' : '') + c + (d ? ' ' + d : ''))}" aria-label="Linked ${esc(kind)} ${esc(c)}${d ? ', ' + esc(d) : ''}"><span class="code">${esc(c)}</span>${d ? `<span class="ld">${esc(d)}</span>` : ''}</span>`; }).join('');
+    if (FR) return FR.lnksHtml(chips, canLink(key) || canModLink(key) ? FR.editChipHtml(key, splitKey(key).code) : '');
     const edit = canLink(key) || canModLink(key) ? `<span class="lchip ledit" role="button" tabindex="0" data-favlink="${esc(key)}" aria-label="Edit linked codes for ${esc(splitKey(key).code)}" title="Edit linked codes">✎</span>` : '';
     return `<span class="lnks" aria-label="Linked codes"><span class="lnkic" aria-hidden="true">↔</span>${chips}${edit}</span>`;
   }
@@ -1279,6 +1337,16 @@
     }).join('');
     return shown ? html : `<p class="muted small pad savedempty">No favourites match “${esc(favFilter.trim())}”.</p>`;
   }
+  // privacy-link-b5 (Eng CEO): exactly one notice for codes saved for the six provinces this version doesn’t include; it lists every
+  // affected group (plus ungrouped favourites and recent) with its codes, and carries the single 'Remove hidden codes' action.
+  function removedNotice() {
+    const m = k => REMOVED_JUR.test(splitKey(k).jur), lbl = k => { const x = splitKey(k); return esc(x.jur + ' ' + x.code); };
+    const inG = new Set(); GS.groups.forEach(g => g.keys.forEach(k => inG.add(k)));
+    const rows = GS.groups.map(g => [esc(g.name), g.keys.filter(m)]).concat([['Favourites', FAVS.filter(k => m(k) && !inG.has(k))], ['Recent', RECENT.filter(m)]]).filter(r => r[1].length);
+    if (!rows.length) return '';
+    return '<div class="hit compact heldsaved removedjur"><span class="cdesc">Some saved codes are for provinces MedBilling Fee Desk does not cover. They are hidden and not used:'
+      + `<ul class="rjlist">${rows.map(r => `<li><b>${r[0]}</b>: ${r[1].map(lbl).join(', ')}</li>`).join('')}</ul></span><button type="button" class="linkbtn" data-dropremoved>Remove hidden codes</button></div>`;
+  }
   function renderSaved() {
     const box = $('#results'); box._ctx = null;
     const grouped = GS.groups.length > 0;
@@ -1288,14 +1356,16 @@
     const tools = (FAVS.length >= 2 || grouped) ? `<div class="favtools"><div class="inputwrap fgq"><input id="favq" type="search" enterkeyhint="search" autocapitalize="off" spellcheck="false" placeholder="Filter favourites" aria-label="Filter favourites" value="${esc(favFilter)}"></div>${GS.groups.length >= 2 ? `<div class="fgsort" role="radiogroup" aria-label="Sort groups"><span>Sort</span>${[['az', 'A–Z', 'Alphabetical'], ['recent', 'Recent', 'Most recently used first'], ['custom', 'My order', 'Your own order (Move up / down)']].map(([v, l, t]) => `<button type="button" role="radio" class="fgsortb" data-gsort="${v}" aria-checked="${GS.sort === v}" title="${t}">${l}</button>`).join('')}</div>` : ''}</div>` : '';
     const favBody = grouped ? `<div id="favgroups" class="favgroups">${groupsHtml()}</div>` : (fav || '<p class="muted small pad savedempty">Tap ☆ on any code to keep it here.</p>');
     const hint = !grouped && FAVS.length >= 3 ? '<p class="muted small fghint">Bill some codes together? Make a named group (e.g. C-section) with <b>+ New group</b>. Groups can also sort favourites by specialty or doctor.</p>' : '';
-    box.innerHTML = (JINFO && JINFO.status !== 'live' ? soonPanel() : '') + `<div class="savedh" id="savedFav"><h3>★ Favourites</h3><button type="button" class="fgnew" id="favNewGrp" aria-label="New favourites group">+ New group</button></div>${tools}${hint}${favBody}
+    const FR = window.MBFav, foot = (P ? (P.meta.skills.length ? `Fees shown for ${esc(P.meta.skillLabel.toLowerCase())} ${esc(skillName())}. ` : '') + `Codes from other provinces or territories are marked; tap one to switch.` : JUR === 'AB' ? `Fees shown for specialty ${sk}.` : '') + ' Search runs on this device only; nothing you type is sent anywhere.';
+    if (FR) { box.innerHTML = FR.paneHtml({ pre: (JINFO && JINFO.status !== 'live' ? soonPanel() : '') + removedNotice(), tools: !!tools, sortHtml: tools ? tools.replace(/^<div class="favtools"><div class="inputwrap fgq">.*?<\/div>/, '').replace(/<\/div>$/, '') : '', filter: favFilter, hint: !!hint, body: favBody, rec, recentMax: RECENT_MAX, foot }); if (!grouped && favFilter) applyFlatFilter(); return; }
+    box.innerHTML = (JINFO && JINFO.status !== 'live' ? soonPanel() : '') + removedNotice() + `<div class="savedh" id="savedFav"><h3>★ Favourites</h3><span class="sph"><button type="button" class="spmanage" id="favManage" aria-label="Manage favourites (table)">Manage</button><button type="button" class="fgnew" id="favNewGrp" aria-label="New favourites group">+ New group</button></span></div>${tools}${hint}${favBody}
       <div class="savedh" id="savedRecent"><h3>Recent</h3>${rec ? '<button type="button" class="linkbtn" id="clearRecent">Clear</button>' : ''}</div>${rec || '<p class="muted small pad savedempty">Codes you open appear here (last ' + RECENT_MAX + ').</p>'}
       <div class="savedtools">
         <div class="saverow"><button type="button" class="ghost" id="expSaved" title="Save favourites &amp; recent codes to a file" aria-label="Save favourites &amp; recent codes to a file" aria-describedby="expHelp">Export</button><p class="small savedhelp" id="expHelp">Export saves your favourites and recent codes to a file so you can back them up or move them to another device.</p></div>
         <div class="saverow"><button type="button" class="ghost" id="impSaved" title="Load favourites &amp; recent codes from a saved file" aria-label="Load favourites &amp; recent codes from a saved file" aria-describedby="impHelp">Import</button><p class="small savedhelp" id="impHelp">Import loads that file back in. Nothing leaves your device unless you share the file.</p></div>
       </div>
       <p class="small muted pad savednote">Saved on this device only. Add to Home Screen on iPhone to keep them safe.</p>
-      <p class="muted small pad savedfoot">${P ? (P.meta.skills.length ? `Fees shown for ${esc(P.meta.skillLabel.toLowerCase())} ${esc(skillName())}. ` : '') + `Codes from other provinces or territories are marked; tap one to switch.` : JUR === 'AB' ? `Fees shown for fee skill ${sk}.` : ''} Search runs on this device only; nothing you type is sent anywhere.</p>`;
+      <p class="muted small pad savedfoot">${P ? (P.meta.skills.length ? `Fees shown for ${esc(P.meta.skillLabel.toLowerCase())} ${esc(skillName())}. ` : '') + `Codes from other provinces or territories are marked; tap one to switch.` : JUR === 'AB' ? `Fees shown for specialty ${sk}.` : ''} Search runs on this device only; nothing you type is sent anywhere.</p>`;
     if (!grouped && favFilter) applyFlatFilter();
   }
   const refreshSaved = () => { if (!lastQuery && $('#results .savedh')) renderSaved(); };
@@ -1362,7 +1432,7 @@
       return codeLabel(key) + lsec + (gs.length ? `<p class="fgsub">Groups</p>` : '') +
         (gs.length ? `<p class="small muted fgnote">${o.fresh ? 'Choose the group(s) for this code. A code can be in several groups; none ticked = Ungrouped.' : 'Tick the groups this code belongs to. A code can be in several groups; none ticked = Ungrouped.'}</p>
         <div class="fgopts" role="group" aria-label="Groups">${gs.map(g => groupOpt(g, mine.has(g.id))).join('')}</div>` : `<p class="small muted fgnote">No groups yet. Use <b>+ New group</b> to make a named group of codes you bill together (e.g. C-section), or to sort favourites by specialty or doctor.</p>`) + `
-        ${from && gs.length > 1 ? `<p class="fgsub">Move from ${esc(from.name)} to</p><div class="fgmove">${gs.filter(g => g.id !== from.id).map(g => `<button type="button" class="chip" data-moveto="${esc(g.id)}">${esc(g.name)}</button>`).join('')}</div>` : ''}
+        ${from && gs.length > 1 ? `<p class="fgsub">Move from ${esc(from.name)} to</p><div class="fgmove">${gs.filter(g => g.id !== from.id).map(g => `<button type="button" class="chip spchip" data-moveto="${esc(g.id)}">${esc(g.name)}</button>`).join('')}</div>` : ''}
         <div class="fgacts"><button type="button" class="ghost" data-newgrp>+ New group</button>${from ? `<button type="button" class="ghost" data-rmfrom>Remove from ${esc(from.name)}</button>` : ''}${o.fresh ? '' : '<button type="button" class="ghost danger" data-unfav>Remove from favourites</button>'}<button type="button" class="primary" data-close>Done</button></div>`;
     };
     const changed = () => { if (o.fresh) GS.last = groupsOf(key).map(g => g.id); saveGroups(); refreshSaved(); };
@@ -1389,7 +1459,7 @@
       <label class="fglab" for="fgName">Name</label><input id="fgName" class="fginput" type="text" maxlength="60" autocomplete="off" autocapitalize="words" spellcheck="false" list="fgSpecList" value="${g ? esc(g.name) : ''}">
       <datalist id="fgSpecList">${SPECIALTIES.map(x => `<option value="${esc(x)}">`).join('')}</datalist>
       <p class="small muted fghelp" id="fgHelp"></p>
-      <div class="fgspecs" id="fgSpecs" role="group" aria-label="Common specialties">${SPECIALTIES.map(x => `<button type="button" class="chip" data-spec="${esc(x)}">${esc(x)}</button>`).join('')}</div>
+      <div class="fgspecs" id="fgSpecs" role="group" aria-label="Common specialties">${SPECIALTIES.map(x => `<button type="button" class="chip spchip" data-spec="${esc(x)}">${esc(x)}</button>`).join('')}</div>
       <p class="fgerr" id="fgErr" role="alert" hidden></p>
       <div class="fgacts"><button type="button" class="ghost" data-close>Cancel</button><button type="button" class="primary" id="fgSave">${g ? 'Save' : 'Create group'}</button></div>`;
     openSheet('fgEditor', g ? 'Edit group' : 'New group', body, el => {
@@ -1444,6 +1514,19 @@
       const cur = orderedGroups(), at = cur.indexOf(g), to = a === 'up' ? at - 1 : at + 1; if (to < 0 || to >= cur.length) return;
       cur.splice(at, 1); cur.splice(to, 0, g); GS.groups = cur; GS.sort = 'custom'; saveGroups(); refreshSaved(); groupSheet(gid);
       const s = $(`#results .favgrp[data-gid="${gid}"]`); if (s) s.scrollIntoView({ block: 'nearest' });
+    }));
+  }
+  // privacy-link-b5: confirm before deleting saved codes for the six provinces this version doesn’t include. Cancel keeps everything.
+  function removeHiddenSheet() {
+    const body = `<p>This can’t be undone. Your original file is not changed.</p>
+      <div class="fglist"><button type="button" class="fgitem" data-close autofocus>Cancel</button><button type="button" class="fgitem danger" data-rmhidden>Remove</button></div>`;
+    openSheet('rmHiddenSheet', 'Remove these hidden codes from MedBilling Fee Desk?', body, el => el.addEventListener('click', e => {
+      if (!e.target.closest('[data-rmhidden]')) return;
+      const m = k => REMOVED_JUR.test(splitKey(k).jur);
+      FAVS = FAVS.filter(k => !m(k)); RECENT = RECENT.filter(k => !m(k));
+      Object.keys(TS.f).forEach(k => { if (m(k)) delete TS.f[k]; }); Object.keys(TS.r).forEach(k => { if (m(k)) delete TS.r[k]; });
+      GS.groups.forEach(g => { g.keys = g.keys.filter(k => !m(k)); });
+      saveLists(); saveGroups(); $$('[data-fav]').forEach(paintStar); refreshSaved(); closeSheet(); toast('Hidden codes removed');
     }));
   }
   function deleteSheet(gid) {
@@ -1626,11 +1709,11 @@
     const call = [];
     if (ctx.periods.length) {
       const own = (c.mods || []).filter(m => hl.has(m[1]));
-      own.forEach(m => call.push(`On this HSC: <b>${esc(m[0])} ${esc(m[1])}</b> ${esc(m[3])} ${esc(m[4])} — ${esc(modDef(m[0], m[1]))}`));
+      own.forEach(m => call.push(`On this fee code: <b>${esc(m[0])} ${esc(m[1])}</b> ${esc(m[3])} ${esc(m[4])} — ${esc(modDef(m[0], m[1]))}`));
       const aa = BYCODE['03.01AA'];
       if (aa) (aa.mods || []).filter(m => hl.has(m[1])).forEach(m => call.push(`After-hours time premium: <a href="#/code/03.01AA">03.01AA</a> with SURT ${esc(m[1])} — ${m[5] ? esc(m[5].map(x => `calls ${x[0]}: ${x[1]} ${x[2]}`).join('; ')) : ''} (<a href="#/rules/15.13">GR 15.13</a>)`));
       if (ctx.hospital || ctx.callback) ctx.periods.forEach(p => { const cb = BYCODE[CALLBACK[p]]; if (cb) call.push(`Special callback (if called in): <a href="#/code/${cb.code}">${esc(cb.code)}</a> ${esc(cb.desc)} <span class="fee">${money(cb.base)}</span> (<a href="#/rules/15.3">GR 15.3</a>, <a href="#/rules/15.8">15.8</a>)`); });
-      if (!own.length && !call.length) call.push('No after-hours modifier is listed for this HSC in the price list.');
+      if (!own.length && !call.length) call.push('No after-hours modifier is listed for this fee code in the price list.');
     }
     if (minutes) {
       (c.mods || []).filter(m => m[0] === 'CARE').forEach(m => { const mm = parseInt((m[1].match(/\d+/) || [0])[0], 10); if (mm && minutes >= mm) { hl.add(m[1]); call.push(`Complex care time: <b>CARE ${esc(m[1])}</b> ${esc(m[3])} ${esc(m[4])} — ${esc(modDef('CARE', m[1]))}`); } });
@@ -1640,7 +1723,7 @@
     if (phone) { phoneCard(c, f, call, docLinks, el); return; }
     $('.split').classList.remove('showing');
     el.innerHTML = `
-      <div class="mobileskill">Fee skill <select class="skillsel" aria-label="Fee skill"></select></div>
+      <div class="mobileskill">Specialty <select class="skillsel" aria-label="Specialty"></select></div>
       <div class="row1"><span class="code codebig">${esc(c.display || c.code)}</span>${star('H:' + c.code)}
         ${c.cat ? `<span class="badge">cat ${esc(c.cat)}</span>` : ''}${c.visit ? '<span class="badge">V</span>' : ''}${c.notInPriceList ? '<span class="badge b">not in price list</span>' : ''}</div>
       <h2>${esc(c.desc)}</h2>
@@ -1650,7 +1733,7 @@
         ${skill !== 'BASE' && f.amount !== c.base && !c.byAssess ? `<div><div class="small muted">Schedule base</div><div class="fee">${money(c.base)}</div></div>` : ''}
         ${c.ane != null ? `<div><div class="small muted">Anaesthetic benefit (separate)</div><div class="fee">${money(c.ane)}</div></div>` : ''}
       </div>
-      <div class="row"><button class="ghost" id="askCode">Ask SI/AI</button><button class="ghost" id="copyCode">Copy HSC</button>${pickBtn('hsc', c.code)}</div>
+      <div class="row"><button class="ghost" id="askCode">Ask SI</button><button class="ghost" id="copyCode">Copy fee code</button>${pickBtn('hsc', c.code)}</div>
       ${call.length ? `<h3>For your description</h3><ul>${call.map(x => `<li>${x}</li>`).join('')}</ul>` : ''}
       ${c.notes ? `<h3>Notes</h3><p>${grLinks(c.notes)}</p>` : ''}
       ${c.gr && c.gr.length ? `<p class="small">Governing rules: ${c.gr.map(g => `<a href="#/rules/${g}">GR ${g}</a>`).join(', ')}</p>` : ''}
@@ -1665,7 +1748,7 @@
     `;
     skillOptions($('.skillsel', el)); $('.skillsel', el).addEventListener('change', e => setSkill(e.target.value));
     $('#askCode').onclick = () => openAI(codePrompt(c));
-    $('#copyCode').onclick = () => copy(c.code, 'HSC copied');
+    $('#copyCode').onclick = () => copy(c.code, 'Fee code copied');
     { const sg = suggestIcd(c); $('#icdsugbasis').textContent = '(' + sg.basis + ')'; renderIcdList($('#icdsug'), sg.rows, sg.empty); }
     if (!quiet && !window.matchMedia('(min-width:900px)').matches) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     if (location.hash !== '#/code/' + code) history.replaceState(null, '', '#/code/' + code);
@@ -1680,7 +1763,7 @@
       <h2>${esc(c.desc)}</h2>
       <div class="pfee"><div class="fee big">${f.amount == null ? esc(f.label) : money(f.amount)}</div>
         <div class="small muted">Schedule fee (${esc(skill === 'BASE' ? 'base' : skill)})${skill !== 'BASE' && f.amount !== c.base && !c.byAssess ? ' · base ' + money(c.base) : ''}${c.ane != null ? ' · anaesthetic ' + money(c.ane) + ' (separate)' : ''}</div></div>
-      <div class="pbtns"><button type="button" class="ghost" id="pDoc" aria-expanded="false">Document</button><button type="button" class="ghost" id="askCode">Ask SI/AI</button><button type="button" class="ghost" id="pMore">More about this condition</button></div>${pickBtn('hsc', c.code)}
+      <div class="pbtns"><button type="button" class="ghost" id="pDoc" aria-expanded="false">Document</button><button type="button" class="ghost" id="askCode">Ask SI</button><button type="button" class="ghost" id="pMore">More about this condition</button></div>${pickBtn('hsc', c.code)}
       <div id="pDocs" class="links" hidden>${docLinks.join('') || '<span class="muted">No document page listed.</span>'}</div>
       ${call.length ? `<details><summary>For your description</summary><ul>${call.map(x => `<li>${x}</li>`).join('')}</ul></details>` : ''}
       ${c.notes || (c.gr && c.gr.length) ? `<details><summary>Key notes</summary>${c.notes ? `<p>${grLinks(c.notes)}</p>` : ''}${c.gr && c.gr.length ? `<p class="small">Governing rules: ${c.gr.map(g => `<a href="#/rules/${g}">GR ${g}</a>`).join(', ')}</p>` : ''}</details>` : ''}
@@ -1728,8 +1811,8 @@
   function renderIcdScope() {
     if (JUR !== 'AB') { renderDxScope(); return; }
     const sc = ICD_SCOPE[skill];
-    $('#icdscope').textContent = (FULL_ICD.has(skill) || !sc) ? `Fee skill ${skill === 'BASE' ? 'not set' : skill}: full Alberta ICD-9 list (${ICD.length.toLocaleString()} codes).`
-      : `Fee skill ${skill}: limited to ${sc.label}. App-defined scope; switch to GP or "Schedule base only" for the full list.`;
+    $('#icdscope').textContent = (FULL_ICD.has(skill) || !sc) ? `Specialty ${skill === 'BASE' ? 'not set' : skill}: full Alberta ICD-9 list (${ICD.length.toLocaleString()} codes).`
+      : `Specialty ${skill}: limited to ${sc.label}. App-defined scope; switch to GP or "Schedule base only" for the full list.`;
   }
   // ------------------------------------------------------------ HSC -> ICD-9 relevance (app-defined clinical mapping)
   // Each rule: test(c) on the HSC; n = ICD-9 numeric category ranges; v = V-code ranges; x = exact code prefixes;
@@ -1877,7 +1960,7 @@
     CONCEPTS.forEach(([re, words]) => { if (re.test(c.desc + ' ' + (c.group || '') + ' ' + (c.sub || ''))) extra += ' ' + words; });
     const isVisit = /consultation|visit|assessment|examination|interview/i.test(c.desc + ' ' + (c.sub || ''));
     if (isVisit && skill === 'OBGY' && !/prenatal|obstetric/i.test(c.desc)) extra += ' pregnancy supervision pelvic pain menstruation menopausal';
-    const why = (isVisit ? 'Visit/consultation code: ' : 'General service: ') + (P ? 'full ' + dxName() + ' list' : FULL_ICD.has(skill) || !ICD_SCOPE[skill] ? 'full list (fee skill ' + (skill === 'BASE' ? 'not set' : skill) + ')' : skill + ' fee-skill scope');
+    const why = (isVisit ? 'Visit/consultation code: ' : 'General service: ') + (P ? 'full ' + dxName() + ' list' : FULL_ICD.has(skill) || !ICD_SCOPE[skill] ? 'full list (specialty ' + (skill === 'BASE' ? 'not set' : skill) + ')' : skill + ' fee-skill scope');
     const VISIT_PINS = { OBGY: ['V22.1', 'V22.0', 'V23.9', 'V24.2', 'V72.3', '626.2', '627.1', '625.3'] };
     if (isVisit && VISIT_PINS[skill]) {
       const rows = VISIT_PINS[skill].map(k => ICDBY[k]).filter(i => i && icdInScope(i)).map(i => ({ i, why }));
@@ -1952,8 +2035,8 @@
   function aboutHtml() {
     const L = (u, t) => `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(t)}</a>`;
     return `<div class="card aboutcard"><h3>About MedBilling Fee Desk</h3>
-      <p class="small">An independent reference tool made by Dr. Jose F de Lara. ${esc(NOT_OFFICIAL)} Fee schedules change; always confirm codes, fees and rules in the current official schedule before you submit a claim.</p>
-      <p class="aboutlinks">${L('https://tp8p7c4vwr-del.github.io/delara-medbilling/privacy.html', 'Privacy policy')} · ${L('https://tp8p7c4vwr-del.github.io/delara-medbilling/terms.html', 'Terms of use')} · ${L('https://tp8p7c4vwr-del.github.io/delara-medbilling/support.html', 'Support')} · <a href="licences.html">Open-source licences</a></p>
+      <p class="small">An independent reference tool made by ${esc(STUDIO_BRAND)}. ${esc(NOT_OFFICIAL)} Fee schedules change; always confirm codes, fees and rules in the current official schedule before you submit a claim.</p>
+      <p class="aboutlinks">${L('https://jfdelara.github.io/delara-medbilling/privacy.html', 'Privacy policy')} · ${L('https://jfdelara.github.io/delara-medbilling/terms.html', 'Terms of use')} · ${L('https://jfdelara.github.io/delara-medbilling/support.html', 'Support')} · <a href="licences.html">Open-source licences</a></p>
       <p class="small muted">Suggest a change: <a href="mailto:delaramedbilling@gmail.com?subject=MedBilling%20Fee%20Desk%20feedback">delaramedbilling@gmail.com</a>. Do not include patient details.</p></div>`;
   }
   function renderResources() {
@@ -2007,8 +2090,8 @@
     const cq = f.toUpperCase().replace(/\s+/g, '');
     const rows = CODES.filter(c => !f || c.code.startsWith(cq) || (c.desc || '').toLowerCase().includes(f) || (c.section || '').toLowerCase().includes(f) || (c.sub || '').toLowerCase().includes(f));
     const show = rows.slice(0, 300);
-    $('#pricelist').innerHTML = `<p class="small muted pad">${rows.length.toLocaleString()} of ${CODES.length.toLocaleString()} HSCs${rows.length > 300 ? ' (first 300 shown; refine the filter)' : ''}. Fee column uses fee skill ${esc(skill === 'BASE' ? 'base' : skill)}.</p>
-      <table><thead><tr><th>HSC</th><th>Description</th><th>Base</th><th>${esc(skill === 'BASE' ? 'Fee' : skill)}</th><th>ANE</th><th>Cat</th></tr></thead><tbody>
+    $('#pricelist').innerHTML = `<p class="small muted pad">${rows.length.toLocaleString()} of ${CODES.length.toLocaleString()} fee codes${rows.length > 300 ? ' (first 300 shown; refine the filter)' : ''}. Fee column uses specialty ${esc(skill === 'BASE' ? 'base' : skill)}.</p>
+      <table><thead><tr><th>Fee code</th><th>Description</th><th>Base</th><th>${esc(skill === 'BASE' ? 'Fee' : skill)}</th><th>ANE</th><th>Cat</th></tr></thead><tbody>
       ${show.map(c => { const fe = feeFor(c); return `<tr><td class="nowrap">${star('H:' + c.code)}<a class="code" href="#/code/${esc(c.code)}">${esc(c.display || c.code)}</a></td><td>${esc(c.desc)}</td><td>${c.byAssess ? 'By assess' : money(c.base)}</td><td class="fee">${fe.amount == null ? '—' : money(fe.amount)}</td><td>${c.ane != null ? money(c.ane) : ''}</td><td>${esc(c.cat || '')}</td></tr>`; }).join('')}
       </tbody></table>`;
   }
@@ -2048,18 +2131,18 @@
     const ex = o.e.map(c => BYCODE[c] ? `<a href="#/code/${esc(c)}">${esc(c)}</a>` : esc(c)).join(', ');
     return `<div class="modrow${o.k === 'E' ? ' mx' : ''}" data-mod="${esc(o.c)}"${o.k === 'E' ? ' data-mx="1"' : ''}>
       <div class="mr1"><span class="code">${esc(o.c)}</span><span class="mname">${esc(modNice(o.n))}</span>${o.k === 'E' && JUR === 'AB' ? `<button type="button" class="mgrp" data-modgrp="${esc(o.c)}" aria-label="Add modifier ${esc(o.c)} to a code group" title="Add to a code group">${groupsOfMod(o.c).length ? '✓ In group' : '+ Group'}</button>` : ''}${pselBtn('M', o.c)}</div>
-      <div class="mr2"><span class="badge mk-${o.k}" title="${o.k === 'E' ? 'Explicit: you enter it on the claim' : 'Implicit: derived by the claims system, not entered on the claim'}">${o.k === 'E' ? 'Explicit' : 'Implicit'}</span><span class="mtype">${esc(o.t)} · ${esc(modNice(T.n || ''))}</span>${o.h ? `<span class="mh">on ${o.h.toLocaleString()} HSC${o.h === 1 ? '' : 's'}</span>` : ''}</div>
+      <div class="mr2"><span class="badge mk-${o.k}" title="${o.k === 'E' ? 'Explicit: you enter it on the claim' : 'Implicit: derived by the claims system, not entered on the claim'}">${o.k === 'E' ? 'Explicit' : 'Implicit'}</span><span class="mtype">${esc(o.t)} · ${esc(modNice(T.n || ''))}</span>${o.h ? `<span class="mh">on ${o.h.toLocaleString()} fee code${o.h === 1 ? '' : 's'}</span>` : ''}</div>
       ${o.d ? `<div class="mdesc">${esc(o.d)}</div>` : ''}
       <details class="mmore"><summary>When it applies</summary>
         <p><b>${esc(o.t)}</b> <span class="muted">(${o.k === 'E' ? 'explicit: entered on the claim' : 'implicit: derived by the claims system, not entered on the claim'})</span>: ${esc(T.x || '')}</p>
         <p><b>${esc(o.c)}</b>: ${esc(o.x)}</p>
-        ${o.h ? `<p>Listed on ${o.h.toLocaleString()} HSC${o.h === 1 ? '' : 's'} in the price list${acts ? ': ' + acts : ''}.${ex ? ' For example ' + ex + (o.h > o.e.length ? ', …' : '') + '.' : ''}</p>` : '<p class="muted">Not listed against specific HSCs in the price list; see the text above.</p>'}
+        ${o.h ? `<p>Listed on ${o.h.toLocaleString()} fee code${o.h === 1 ? '' : 's'} in the price list${acts ? ': ' + acts : ''}.${ex ? ' For example ' + ex + (o.h > o.e.length ? ', …' : '') + '.' : ''}</p>` : '<p class="muted">Not listed against specific fee codes in the price list; see the text above.</p>'}
         <p class="small"><a target="_blank" rel="noopener noreferrer" href="${esc(MODX.source.url)}#page=${o.p}">Fee modifier definitions, page ${o.p}</a></p>
       </details></div>`;
   }
   function modSourceHtml() {
     const s = MODX.source, c = MODX.counts;
-    return `<p class="small muted modsrc">Source: ${esc(s.publisher)}, Schedule of Medical Benefits: <a target="_blank" rel="noopener noreferrer" href="${esc(s.url)}">${esc(s.title)}</a> (RG122, ${esc(s.edition)} edition, <a target="_blank" rel="noopener noreferrer" href="${esc(s.dataset)}">open.alberta.ca</a>). ${c.codes} modifier codes in ${c.types} types, ${c.explicit} explicit. HSC counts and actions are from the <a target="_blank" rel="noopener noreferrer" href="${esc(s.usage.url)}">${esc(s.usage.title.replace(/^Medical/, 'medical'))}</a>. Only explicit modifiers can be linked or sent to MedBilling Logs. Always confirm modifier rules in the current SOMB.</p>`;
+    return `<p class="small muted modsrc">Source: ${esc(s.publisher)}, Schedule of Medical Benefits: <a target="_blank" rel="noopener noreferrer" href="${esc(s.url)}">${esc(s.title)}</a> (RG122, ${esc(s.edition)} edition, <a target="_blank" rel="noopener noreferrer" href="${esc(s.dataset)}">open.alberta.ca</a>). ${c.codes} modifier codes in ${c.types} types, ${c.explicit} explicit. Fee code counts and actions are from the <a target="_blank" rel="noopener noreferrer" href="${esc(s.usage.url)}">${esc(s.usage.title.replace(/^Medical/, 'medical'))}</a>. Only explicit modifiers can be linked or sent to MedBilling Logs. Always confirm modifier rules in the current SOMB.</p>`;
   }
   function renderMods() {
     const f = ($('#mf').value || '').trim();
@@ -2071,7 +2154,7 @@
     }
     if (!modKindSet && pickMulti()) modKind = 'E';
     const rows = modSearch(f, modKind), shown = rows.slice(0, f ? MODSHOW : rows.length);
-    const kinds = `<div class="modkinds" role="group" aria-label="Show">${[['all', 'All'], ['E', 'Explicit (on the claim)'], ['I', 'Implicit (automatic)']].map(([k, l]) => `<button type="button" class="chip${modKind === k ? ' on' : ''}" data-mk="${k}" aria-pressed="${modKind === k}">${l}</button>`).join('')}</div>`;
+    const kinds = `<div class="modkinds" role="group" aria-label="Show">${[['all', 'All'], ['E', 'Explicit (on the claim)'], ['I', 'Implicit (automatic)']].map(([k, l]) => SPUI.chip({ tag: 'button', cls: 'chip' + (modKind === k ? ' on' : ''), attrs: { 'data-mk': k, 'aria-pressed': String(modKind === k) }, text: l })).join('')}</div>`;
     const head = `<p class="small muted modcount" aria-live="polite">${f ? `${rows.length} modifier${rows.length === 1 ? '' : 's'} match${rows.length === 1 ? 'es' : ''}` : `${rows.length} modifier codes`}${rows.length > shown.length ? `, showing the first ${shown.length}; add words to narrow it` : ''}${pickMulti() ? ' · tap an explicit modifier to send it, or ＋ to select it with other codes' : ''}</p>`;
     let body = '';
     if (!rows.length) body = `<p class="muted pad">No modifiers match “${esc(f)}”. Try a code (CMGP, EV, TELES) or words such as complex, evening, telehealth, assistant.</p>`;
@@ -2090,17 +2173,17 @@
   const ahcipBullHtml = () => `<div class="card ahcipbull"><h3>Alberta Health Care Insurance Plan bulletins</h3><ul class="bulllinks">${AHCIP_BULL.map(([n, s]) => `<li><a href="https://open.alberta.ca/publications/bulletin-alberta-health-care-insurance-plan-${s}" target="_blank" rel="noopener noreferrer">${esc(n)}</a></li>`).join('')}</ul><p class="small muted">Official pages on open.alberta.ca (opens outside the app).</p></div>`;
   function renderBulletins() {
     const list = BULL.slice().sort((a, b) => b.num - a.num);
-    $('#bulletins').innerHTML = ahcipBullHtml() + `<p class="small muted">AHCIP medical bulletins (MED 251 onward) from <a target="_blank" rel="noopener noreferrer" href="${esc(META.bulletinsDataset)}">open.alberta.ca</a>. HSCs named in a bulletin are flagged on the code detail.</p>` +
+    $('#bulletins').innerHTML = ahcipBullHtml() + `<p class="small muted">AHCIP medical bulletins (MED 251 onward) from <a target="_blank" rel="noopener noreferrer" href="${esc(META.bulletinsDataset)}">open.alberta.ca</a>. fee codes named in a bulletin are flagged on the code detail.</p>` +
       list.map(b => `<div class="bul${b.superseded ? ' sup' : ''}"><b>MED ${b.num}</b> — ${esc(b.title)} <span class="small muted">${esc(b.date || b.created)}</span>
         ${b.superseded ? `<span class="badge s">superseded${b.supersededBy ? ' by MED ' + b.supersededBy : ''}</span>` : ''}
         ${b.supersedes && b.supersedes.length ? `<div class="small muted">Supersedes MED ${b.supersedes.join(', ')}</div>` : ''}
-        <div class="small"><a target="_blank" rel="noopener noreferrer" href="${esc(b.url)}">Open PDF</a>${b.codes && b.codes.length ? ` · ${b.codes.length} HSCs: ${b.codes.slice(0, 40).map(c => `<a href="#/code/${esc(c)}">${esc(c)}</a>`).join(', ')}${b.codes.length > 40 ? '…' : ''}` : ''}</div></div>`).join('');
+        <div class="small"><a target="_blank" rel="noopener noreferrer" href="${esc(b.url)}">Open PDF</a>${b.codes && b.codes.length ? ` · ${b.codes.length} fee codes: ${b.codes.slice(0, 40).map(c => `<a href="#/code/${esc(c)}">${esc(c)}</a>`).join(', ')}${b.codes.length > 40 ? '…' : ''}` : ''}</div></div>`).join('');
   }
   function hsc(code) { const c = BYCODE[code]; return c ? `<a href="#/code/${code}">${esc(c.display || code)}</a> ${esc(c.desc)} (<span class="fee">${c.byAssess ? 'by assessment' : money(feeFor(c).amount)}</span>)` : esc(code); }
   function gr(id) { return RULEBY[id] ? `<a href="#/rules/${id}">GR ${id}</a>` : 'GR ' + id; }
   function renderNotes() {
     $('#notes').innerHTML = `<div class="notes">
-    <p class="small muted">Short claim notes written for MedBilling Fee Desk from the SOMB effective ${esc(fmtDate(META.sombEffective))}. Fees shown for fee skill ${esc(skill === 'BASE' ? 'base' : skill)}. The governing rule text prevails.</p>
+    <p class="small muted">Short claim notes written for MedBilling Fee Desk from the SOMB effective ${esc(fmtDate(META.sombEffective))}. Fees shown for specialty ${esc(skill === 'BASE' ? 'base' : skill)}. The governing rule text prevails.</p>
     <div class="card"><h3>Cesarean section and BMI</h3><ul>
       <li>${hsc('86.9C')}; ${hsc('86.9D')}; ${hsc('86.9B')}. Neither 86.9C nor 86.9D may be claimed with 81.29C (HSC note).</li>
       <li>BMI modifier (BMIPRO for the surgeon/assistant, BMIANE/BMI2AN for anaesthesia) adds 25% where the price list lists it: adult BMI ≥ 40 or paediatric &gt; 97th percentile — ${gr('18.1')}.</li>
@@ -2115,7 +2198,7 @@
       <li>Add-ons claimable at 100% with delivery per HSC notes, e.g. ${hsc('87.82')}, ${hsc('87.89A')}, ${hsc('87.6')}, ${hsc('87.99A')}, ${hsc('84.21D')}.</li></ul></div>
     <div class="card"><h3>After-hours (unscheduled services and time premium)</h3><ul>
       <li>Periods: weekday evening 1700-2200, weekend/stat 0700-2200, any night 2200-0700 (${gr('15.3')}). Claim by the time the encounter starts, not the time of the call (${gr('15.6')}).</li>
-      <li>SURC (EV, NTPM, NTAM, WK) on eligible HSCs requires a special call on the patient's behalf, unscheduled response outside normal hours, priority attendance and direct attendance (${gr('15.7.1')}). Not claimable when the physician initiates the service (${gr('15.4')}).</li>
+      <li>SURC (EV, NTPM, NTAM, WK) on eligible fee codes requires a special call on the patient's behalf, unscheduled response outside normal hours, priority attendance and direct attendance (${gr('15.7.1')}). Not claimable when the physician initiates the service (${gr('15.4')}).</li>
       <li>After-hours time premium: ${hsc('03.01AA')} with SURT TEV/TNTP/TNTA/TWK/TST per 15 min of direct care, max 4 per hour (${gr('15.13')}).</li></ul></div>
     <div class="card"><h3>Special callbacks to hospital inpatient</h3><ul>
       <li>${hsc('03.05N')}; ${hsc('03.05P')}; ${hsc('03.05QA')}; ${hsc('03.05QB')}; ${hsc('03.05R')}.</li>
@@ -2143,11 +2226,11 @@
   function codePrompt(c) {
     if (P) { const d = (c.desc || '').slice(0, 160), m = P.meta; return { text: `${m.name} ${m.title}, ${m.codeLabel.toLowerCase()} code ${c.code} (${d})${m.skills.length && skill ? ', ' + skillName() : ''}, ${m.effectiveLabel.replace(/^./, ch => ch.toLowerCase())}: explain billing rules, common modifiers and appropriate ${dxName()} diagnostic codes. Verify against the current ${m.name} ${m.title}.`, topic: d }; }
     const d = (c.desc || '').slice(0, 160);
-    return { text: `Alberta SOMB health service code ${c.code} (${d}), fee skill ${skill === 'BASE' ? 'not specified' : skill}, effective ${effShort()}: explain billing rules, common modifiers and appropriate ICD-9 codes. Verify against the current SOMB.`, topic: d };
+    return { text: `Alberta SOMB health service code ${c.code} (${d}), specialty ${skill === 'BASE' ? 'not specified' : skill}, effective ${effShort()}: explain billing rules, common modifiers and appropriate ICD-9 codes. Verify against the current SOMB.`, topic: d };
   }
   function generalPrompt() {
     if (JUR !== 'AB') { const n = JINFO ? JINFO.name : JUR, t = P ? P.meta.title : 'physician fee schedule'; return { text: `${n} ${t}${P ? ', ' + P.meta.effectiveLabel.replace(/^./, ch => ch.toLowerCase()) : ''}: explain how to choose fee codes, modifiers and diagnostic codes for physician billing. Verify against the current official ${n} schedule.`, topic: n + ' physician fee schedule' }; }
-    return { text: `Alberta Schedule of Medical Benefits (SOMB), fee skill ${skill === 'BASE' ? 'not specified' : skill}, effective ${effShort()}: explain how to choose health service codes, modifiers and ICD-9 diagnostic codes. Verify against the current SOMB.`, topic: 'Alberta Schedule of Medical Benefits' };
+    return { text: `Alberta Schedule of Medical Benefits (SOMB), specialty ${skill === 'BASE' ? 'not specified' : skill}, effective ${effShort()}: explain how to choose health service codes, modifiers and ICD-9 diagnostic codes. Verify against the current SOMB.`, topic: 'Alberta Schedule of Medical Benefits' };
   }
   let aiPrompt = null, aiPick = null;
   function openAI(p) {
@@ -2185,40 +2268,6 @@
     };
   }
 
-  // ------------------------------------------------------------ feedback (POST only on explicit submit)
-  const PHI = [
-    /\b\d{5}[-\s]?\d{4}\b/, /\b\d{9}\b/, /\bPHN\b/i, /\bULI\b/, /\b(DOB|D\.O\.B\.?|date of birth|birth ?date|born on)\b/i,
-    /\b(19|20)\d{2}[-\/.](0?[1-9]|1[0-2])[-\/.](0?[1-9]|[12]\d|3[01])\b/,
-    /\b(0?[1-9]|[12]\d|3[01])[-\/.](0?[1-9]|1[0-2])[-\/.]((19|20)\d{2}|\d{2})\b/,
-    /\b(0?[1-9]|1[0-2])[-\/.](0?[1-9]|[12]\d|3[01])[-\/.]((19|20)\d{2})\b/,
-    /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2},?\s+(19|20)\d{2}\b/i,
-    /\b\d{1,2}\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+(19|20)\d{2}\b/i,
-    /\b(MRN|chart\s*(no|number|#)|claim\s*(no|number|#))\b/i
-  ];
-  function wireFeedback() {
-    const form = $('#fb'), msg = $('#fbmsg');
-    form.addEventListener('submit', async e => {
-      e.preventDefault();
-      const fd = new FormData(form);
-      const text = String(fd.get('message') || '');
-      if (!text.trim()) { msg.textContent = 'Enter a suggestion.'; return; }
-      if (PHI.some(re => re.test(text)) || PHI.slice(0, 5).some(re => re.test(String(fd.get('email') || '').replace(/@.*/, '')))) {
-        msg.innerHTML = '<span class="warn">Remove patient identifiers before sending.</span>'; return;
-      }
-      if (fd.get('botcheck')) return;
-      msg.textContent = 'Sending…';
-      try {
-        const r = await fetch('https://api.web3forms.com/submit', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-          body: JSON.stringify({ access_key: fd.get('access_key'), subject: fd.get('subject'), email: fd.get('email') || undefined, message: text, botcheck: false }), referrerPolicy: 'no-referrer' });
-        const j = await r.json().catch(() => ({}));
-        if (r.ok && j.success !== false) { msg.textContent = 'Thank you. Suggestion sent.'; form.reset(); }
-        else throw new Error('send failed');
-      } catch (err) {
-        msg.innerHTML = 'Could not send. Email <a href="mailto:delaramedbilling@gmail.com">delaramedbilling@gmail.com</a> instead.';
-      }
-    });
-  }
-
   // ------------------------------------------------------------ misc
   async function copy(text, note) {
     try { await navigator.clipboard.writeText(text); if (note) toast(note); return true; }
@@ -2227,14 +2276,14 @@
     }
   }
   // M1-e: honours its duration; sized to the sticky app bar so it lies over the bar, never over list rows
-  let tt; function toast(t, ms) { const el = $('#toast'), top = $('.top'); if (top) document.documentElement.style.setProperty('--toph', Math.max(44, Math.round(top.getBoundingClientRect().height)) + 'px');
+  let tt; function toast(t, ms) { if (window.MBSuite) return window.MBSuite.toast(t, ms); const el = $('#toast'), top = $('.top'); if (top) document.documentElement.style.setProperty('--toph', Math.max(44, Math.round(top.getBoundingClientRect().height)) + 'px');
     el.textContent = t; el.hidden = false; clearTimeout(tt); tt = setTimeout(() => el.hidden = true, ms > 0 ? ms : 2200); }
   // M1-e: brief shake + highlight on a row that can't be picked here (a fee row in a Dx pick)
   function nope(el) { if (!el) return; el.classList.remove('nope'); void el.offsetWidth; el.classList.add('nope'); setTimeout(() => el.classList.remove('nope'), 700); }
 
   function wire() {
-    $('#moreBtn').addEventListener('click', e => { e.stopPropagation(); const m = $('#moreMenu'); m.hidden = !m.hidden; $('#moreBtn').setAttribute('aria-expanded', String(!m.hidden)); });
-    $('#moreMenu').addEventListener('click', e => { if (e.target.closest('a[href]')) { closeMore(); return; } const b = e.target.closest('button[data-tab]'); if (!b) return; closeMore(); if (b.dataset.tab === 'procedures') { goHome(); return; } showTab(b.dataset.tab); history.replaceState(null, '', '#/' + b.dataset.tab); window.scrollTo(0, 0); });
+    if ($('#moreBtn')) $('#moreBtn').addEventListener('click', e => { e.stopPropagation(); const m = $('#moreMenu'); m.hidden = !m.hidden; $('#moreBtn').setAttribute('aria-expanded', String(!m.hidden)); });
+    if ($('#moreMenu')) $('#moreMenu').addEventListener('click', e => { if (e.target.closest('a[href]')) { closeMore(); return; } const b = e.target.closest('button[data-tab]'); if (!b) return; closeMore(); if (b.dataset.tab === 'procedures') { goHome(); return; } showTab(b.dataset.tab); history.replaceState(null, '', '#/' + b.dataset.tab); window.scrollTo(0, 0); });
     document.addEventListener('click', e => { if (!e.target.closest('.morewrap')) closeMore(); });
     $('#layoutToggle').addEventListener('click', () => {
       LS.set('layout', phone ? 'desktop' : 'phone'); applyLayout();
@@ -2242,7 +2291,45 @@
       if (lastQuery) doSearch(lastQuery, true);
     });
     window.addEventListener('resize', () => { if (!LS.get('layout', '')) { const was = phone; applyLayout(); if (was !== phone && current) showCode(current, true); } });
-    $('#tabs').addEventListener('click', e => { const b = e.target.closest('button[data-tab]'); if (!b) return; showTab(b.dataset.tab); history.replaceState(null, '', b.dataset.tab === 'procedures' && current ? '#/code/' + current : '#/' + b.dataset.tab); });
+    $('#tabs').addEventListener('click', e => { const b = e.target.closest('button[data-tab]'); if (!b) return; const t = b.dataset.tab;
+      if (t === 'fav') { openFavTab(); history.replaceState(null, '', '#/fav'); window.scrollTo(0, 0); return; }
+      showTab(t); history.replaceState(null, '', t === 'procedures' && current ? '#/code/' + current : '#/' + (t === 'codes' ? codesSub() : t)); if (t !== 'procedures') window.scrollTo(0, 0); });
+    $('#codesPick').addEventListener('click', e => { const b = e.target.closest('button[data-tab]'); if (!b) return; showTab(b.dataset.tab); history.replaceState(null, '', '#/' + b.dataset.tab); });
+    // Favourites: Manage opens the table; the table's back button returns to the list
+    $('#results').addEventListener('click', e => { if (e.target.closest('#favManage')) { showTab('favmanage'); history.replaceState(null, '', '#/favmanage'); window.scrollTo(0, 0); } });
+    $('#fmBack').addEventListener('click', () => { openFavTab(); history.replaceState(null, '', '#/fav'); });
+    // Settings: text size + one backup (favourites with links, groups and recent codes, plus these settings)
+    const sz = $('#spSize'); sz.value = String(textSizeIx()); sz.addEventListener('input', () => { LS.set('textsize', String(TEXT_SIZES[+sz.value] || 1)); applyTextSize(); });
+    // move-prep: Export my data / Import my data (shared js/shared/move.js). Fee Desk keeps everything in localStorage under
+    // 'mb.' (favourites, recent, links, groups, names, bundles, saved times, province, specialty, text size, layout, region,
+    // SI choice, code subset). It uses no IndexedDB. Session-only keys (pick, pick tray, banner dismissal) are not exported.
+    if (window.MBMove) {
+      const MV = window.MBMove, keep = k => /^mb\./.test(k) && !/^mb\.(pick|picktray|move)\./.test(k);
+      const n = v => { try { const o = JSON.parse(v); return Array.isArray(o) ? o.length : (o && typeof o === 'object' ? Object.keys(o).length : 1); } catch (e) { return v ? 1 : 0; } };
+      const ROWS = [['favourites', 'Favourite codes'], ['recent', 'Recent codes'], ['links', 'Linked codes'], ['groups', 'Favourite groups'], ['settings', 'Settings'], ['keys', 'Stored items (total)']];
+      const FAVK = { 'mb.favs': 'favourites', 'mb.recent': 'recent', 'mb.favlinks': 'links', 'mb.favmodlinks': 'links', 'mb.favgroups': 'groups' };
+      const SETK = ['mb.jur', 'mb.skill', 'mb.textsize', 'mb.layout', 'mb.region', 'mb.ai', 'mb.codesub'];
+      const countOf = snap => { const c = { favourites: 0, recent: 0, links: 0, groups: 0, settings: 0, keys: 0 };
+        Object.keys(snap).forEach(k => { c.keys++; if (FAVK[k]) c[FAVK[k]] += n(snap[k]); else if (SETK.includes(k)) c.settings++; }); return c; };
+      MV.init({ appId: 'feedesk', appVersion: 'mb-v57-20261026-privacy-link-b13', settingsMount: '#spSettings', bannerMount: '#main', toast,
+        exportData: async () => { const snap = MV.lsSnapshot(localStorage, keep);
+          return { data: { localStorage: snap, indexedDB: {} }, counts: countOf(snap), inventory: { localStorage: Object.keys(snap), indexedDB: [], notExported: ['sessionStorage (pick in progress, banner dismissed)', 'offline cache (app files, downloaded again)'] } }; },
+        // b: older Fee Desk backup files (kind 'favourites', from Back up favourites & settings or the Favourites export) are
+        // still accepted here. Merge only, through the same favourites import as before; specialty and text size come back too.
+        readLegacy: async o => { if (!o || typeof o !== 'object' || (o.app && o.app !== 'MedBilling Fee Desk')) return false;
+          let p; try { p = parseImport(JSON.stringify(o)); } catch (e) { return false; }
+          const st = p.settings && typeof p.settings === 'object' ? ['province', 'specialty', 'textSize'].filter(k => p.settings[k] != null).length : 0;
+          const when = o.exported ? String(o.exported).slice(0, 10) : '';
+          return { from: `Older Fee Desk backup file${when ? ' from ' + when : ''}`, modes: ['merge'], notes: [MV.T.legacy(o.version)],
+            counts: { favourites: p.fav.length, recent: p.rec.length, links: p.links.length + p.modLinks.length, groups: p.groups.length, settings: st, keys: p.fav.length + p.rec.length },
+            rows: ROWS.filter(r => r[0] !== 'keys'),
+            apply: async () => { const m = applyParsed(p, 'file', true, true);
+              return { reload: true, message: m ? m.replace(/\.$/, '') : 'Nothing new in that file: everything in it is already here' }; } }; },
+        readImport: async env => { const snap = env.data.localStorage; if (!snap || typeof snap !== 'object' || Array.isArray(snap) || Object.values(snap).some(v => typeof v !== 'string')) throw new MV.MoveError('bad', MV.ERR.bad);
+          const clean = {}; Object.keys(snap).forEach(k => { if (keep(k)) clean[k] = snap[k]; });
+          return { counts: countOf(clean), rows: ROWS, apply: async mode => { const r = MV.lsApply(localStorage, clean, mode, keep);
+            return { reload: true, message: mode === 'replace' ? `Imported (replace): ${r.added} items written, ${r.removed} removed` : `Imported (merge): ${r.added} added, ${r.merged} combined, ${r.kept} kept as they were` }; } }; } });
+    }
     const q = $('#q'), clr = $('#qclear');
     $('#qform').addEventListener('submit', e => { e.preventDefault(); q.blur(); doSearch(q.value); });
     q.addEventListener('input', () => { clr.hidden = !q.value; });
@@ -2250,6 +2337,7 @@
     clr.addEventListener('click', () => { q.value = ''; clr.hidden = true; doSearch(''); q.focus(); });
     $('#limitSkill').addEventListener('change', () => lastQuery && doSearch(lastQuery, true));
     $('#results').addEventListener('click', e => {
+      if (e.target.closest('[data-dropremoved]')) { removeHiddenSheet(); return; }
       const dh = e.target.closest('[data-dropheld]');
       if (dh) { const id = dh.dataset.dropheld, m = k => splitKey(k).jur === id; FAVS = FAVS.filter(k => !m(k)); RECENT = RECENT.filter(k => !m(k));
         Object.keys(TS.f).forEach(k => { if (m(k)) delete TS.f[k]; }); Object.keys(TS.r).forEach(k => { if (m(k)) delete TS.r[k]; }); saveLists(); renderSaved(); toast('Hidden codes removed'); return; }
@@ -2290,7 +2378,7 @@
       const c = e.target.closest('[data-copy]'); if (c) { copy(c.dataset.copy, c.dataset.copy + ' copied'); return; }
       const m = e.target.closest('[data-medres]'); if (m) showMedRes(m.dataset.medres);
     });
-    wireAI(); wireFeedback();
+    wireAI();
   }
   // Pick mode taps (capture phase, before rows open their detail). Fee code: a search result, saved row, price-list code,
   // the big code on its page or "Use … in MedBilling Logs". ICD-9: any ICD-9 row (search, suggested list, saved) or its page.
@@ -2401,6 +2489,8 @@
     const sk = splitKey(h), c = sk.jur === JUR ? BYCODE[sk.code] : null, f = c ? feeFor(c) : null, d = fmDesc(h);
     return `<b>${esc(c ? c.display || c.code : sk.code)}</b> <span title="${esc(d)}" aria-label="${esc(d)}">${esc(shortOf('H', sk.code, d))}</span>${f ? ` <span class="fee">${f.amount == null ? esc(f.label) : money(f.amount)}</span>` : ''}${dx.length ? ` <span class="muted">[${esc(dx.map(x => splitKey(x).code).join(', '))}]</span>` : ''}`;
   }
+  // M12: a favourite without a custom name shows its short label (same wording as the list), never "—"
+  function fmLabel(k) { const sk = splitKey(k); if (sk.jur === JUR) { if (sk.t === 'H' && BYCODE[sk.code]) return shortOf('H', sk.code, BYCODE[sk.code].desc); if (sk.t === 'I' && ICDBY[sk.code]) return shortOf('I', sk.code, ICDBY[sk.code].desc); } return sk.code; }
   function renderFavManage() {
     const box = $('#fmList'); if (!box) return;
     const q = ($('#fmq').value || '').trim().toLowerCase();
@@ -2410,11 +2500,11 @@
     const bRows = bq.map(x => { const op = fmOpen.has('B:' + x.id), f = x.lines[0];
       return `<div class="fmrow fmb" data-fmb="${esc(x.id)}"><button type="button" class="fmexp" data-fma="exp" aria-expanded="${op}" aria-label="Show all lines">${op ? '▴' : '▾'}</button><span class="fmname">${esc(x.name)}</span><span class="code fmcode">${esc(splitKey(f.h).code)} <span class="badge">+${x.lines.length - 1}</span></span><span class="fmdx">${esc(f.dx.map(d => splitKey(d).code).join(', '))}</span><span class="fmact"><button type="button" data-fma="edit" aria-label="Edit bundle" title="Edit">✎</button><button type="button" data-fma="del" aria-label="Delete bundle" title="Delete">✕</button></span>${op ? `<div class="fmdesc small">${x.lines.map((l, i) => `${i + 1}. ${fmLine(l.h, l.dx)}`).join('<br>')}</div>` : ''}</div>`; }).join('');
     if (!keys.length && !BUNDLES.length) { box.innerHTML = '<p class="muted pad">No favourites yet. Tap + New favourite (one code or a bundle of lines), tap ☆ beside any code, or import a CSV.</p>'; return; }
-    box.innerHTML = `<div class="fmhead"><span>Name</span><span>Code</span><span>ICD-9</span><span></span></div>` + bRows + (shown.map(k => {
+    box.innerHTML = `<div class="fmhead"><span>Name</span><span>Fee code</span><span>Diagnosis (ICD-9)</span><span></span></div>` + bRows + (shown.map(k => {
       const sk = splitKey(k), i = FAVS.indexOf(k), op = fmOpen.has(k);
       const dx = sk.t === 'H' ? linksOf(k).map(x => splitKey(x).code).join(', ') : '';
       const desc = fmDesc(k), lnk = linksOf(k).map(x => `${splitKey(x).code} ${fmDesc(x)}`).join(' · ');
-      return `<div class="fmrow" data-fmk="${esc(k)}"><button type="button" class="fmexp" data-fma="exp" aria-expanded="${op}" aria-label="Show description">${op ? '▴' : '▾'}</button><span class="fmname">${esc(NAMES[k] || '—')}</span><span class="code fmcode">${esc(sk.code)}${sk.jur !== JUR ? ` <span class="badge j">${esc(sk.jur)}</span>` : ''}</span><span class="fmdx">${esc(dx || (sk.t === 'I' ? 'ICD-9' : ''))}</span><span class="fmact"><button type="button" data-fma="up" aria-label="Move up"${i <= 0 || q ? ' disabled' : ''}>↑</button><button type="button" data-fma="down" aria-label="Move down"${i >= FAVS.length - 1 || q ? ' disabled' : ''}>↓</button><button type="button" data-fma="edit" aria-label="Rename" title="Edit name">✎</button><button type="button" data-fma="del" aria-label="Delete favourite" title="Delete">✕</button></span>${op ? `<div class="fmdesc small">${esc(desc || 'Saved under ' + sk.jur)}${lnk ? `<br><span class="muted">Linked: ${esc(lnk)}</span>` : ''}</div>` : ''}</div>`;
+      return `<div class="fmrow" data-fmk="${esc(k)}"><button type="button" class="fmexp" data-fma="exp" aria-expanded="${op}" aria-label="Show description">${op ? '▴' : '▾'}</button><span class="fmname${NAMES[k] ? '' : ' fmlbl'}">${esc(NAMES[k] || fmLabel(k))}</span><span class="code fmcode">${esc(sk.code)}${sk.jur !== JUR ? ` <span class="badge j">${esc(sk.jur)}</span>` : ''}</span><span class="fmdx">${esc(dx || (sk.t === 'I' ? 'ICD-9' : ''))}</span><span class="fmact"><button type="button" data-fma="up" aria-label="Move up"${i <= 0 || q ? ' disabled' : ''}>↑</button><button type="button" data-fma="down" aria-label="Move down"${i >= FAVS.length - 1 || q ? ' disabled' : ''}>↓</button><button type="button" data-fma="edit" aria-label="Rename" title="Edit name">✎</button><button type="button" data-fma="del" aria-label="Delete favourite" title="Delete">✕</button></span>${op ? `<div class="fmdesc small">${esc(desc || 'Saved under ' + sk.jur)}${lnk ? `<br><span class="muted">Linked: ${esc(lnk)}</span>` : ''}</div>` : ''}</div>`;
     }).join('') || (bRows ? '' : '<p class="muted pad">No favourites match.</p>'));
   }
   function csvCell(v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
@@ -2541,3 +2631,16 @@
   pickBar();
   boot().then(() => { ready = true; paintTray(); }).catch(err => { document.body.insertAdjacentHTML('afterbegin', '<p class="pad warn">Could not load data files. Serve this folder over http (e.g. python3 -m http.server).</p>'); console.error(err); });
 })();
+
+// Suite parity v1 (M11): the main search placeholder is never clipped; it steps down to shorter wording when the field is narrow
+function fitQph() {
+  const q = document.getElementById('q'); if (!q) return; if (!q.dataset.ph) q.dataset.ph = q.placeholder;
+  const w = q.clientWidth; if (!w) return;
+  const cs = getComputedStyle(q), c = fitQph.c || (fitQph.c = document.createElement('canvas').getContext('2d')); c.font = cs.font;
+  const room = w - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0) - 4;
+  const code = (q.dataset.ph.match(/enter an? (.+)$/) || [, 'fee code'])[1];
+  const opts = [q.dataset.ph, 'Service or ' + code, 'Search ' + code + 's'];
+  q.placeholder = opts.find(t => c.measureText(t).width <= room) || opts[opts.length - 1];
+}
+window.addEventListener('resize', () => fitQph());
+(function () { const go = () => { const q = document.getElementById('q'); if (q && window.ResizeObserver) new ResizeObserver(() => fitQph()).observe(q); }; if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go(); })();
