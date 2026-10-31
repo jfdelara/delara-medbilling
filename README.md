@@ -22,3 +22,7 @@ These other places hard-code the address and must change in the same commit when
 - `.github/workflows/pages.yml` (GitHub Pages deploy) if hosting moves to Cloudflare Pages
 - `site/sw.js`: bump the cache name `V` on any of the above
 - the iOS/Android wrapper `server.url` / `www` copies, and MedBilling Logs (its Fee Desk link and pick-mode return URL)
+
+## Legal go-live date
+
+The date shown as "Effective date" and "Last updated" in `site/privacy.html` and `site/terms.html` comes from `GO-LIVE-DATE` (repo root). Edit that file, run `python3 scripts/set-go-live-date.py`, commit. It is currently a stand-in (November 2, 2026) and must be reset to the real go-live date in the final package commit.
