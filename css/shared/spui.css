@@ -1,0 +1,33 @@
+/* Suite parity v1b: shared UI kit for Fee Desk and MedBilling Logs (identical file in both apps: css/shared/spui.css).
+   M6 one header, M15 one toolbar button (icon + short visible label), M14 one chip, M11 one search label.
+   Based on Fee Desk's header, toolbar buttons (.ghost / .primary) and filter chips. Plain CSS, no build step. */
+:root{--spu-hdr:#0f766e;--spu-hdr-ink:#fff;--spu-teal:#0f766e;--spu-teal-d:#115e59;--spu-line:#d9dee5;--spu-ink:#1f2933;--spu-font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;--spu-hh:48px}
+/* ---- M6: one header (colour, height, brand, right-hand slot). The clock (Logs only) uses the header font. ---- */
+header.top{box-sizing:border-box;background:var(--spu-hdr);color:var(--spu-hdr-ink);min-height:calc(var(--spu-hh) + env(safe-area-inset-top));padding:calc(8px + env(safe-area-inset-top)) 12px 8px;gap:10px;border-bottom:0;box-shadow:none;font-family:var(--spu-font)}
+header.top .brand{display:flex;align-items:center;gap:8px;min-width:0;color:var(--spu-hdr-ink);text-decoration:none}
+header.top .brand img{width:32px;height:32px;border-radius:8px;background:#fff}
+header.top .title{font:700 1.05rem/1.2 var(--spu-font);color:var(--spu-hdr-ink);white-space:nowrap}
+header.top .topr{display:flex;align-items:center;gap:8px;margin-left:auto}
+header.top .clock{font:700 1.05rem/1.2 var(--spu-font);font-variant-numeric:tabular-nums;color:var(--spu-hdr-ink)}
+header.top .lockbtn{min-height:32px;padding:0 12px;border:1px solid rgba(255,255,255,.75);border-radius:999px;background:transparent;color:var(--spu-hdr-ink);font:600 .85rem/1 var(--spu-font);cursor:pointer}
+header.top .lockbtn:focus-visible{outline:2px solid #fff;outline-offset:2px}
+/* ---- M15: one toolbar button: icon + short visible label (aria-label carries the long name) ---- */
+.sptb{display:inline-flex;align-items:center;justify-content:center;gap:4px;box-sizing:border-box;min-height:34px;min-width:0;padding:0 10px;border:1px solid var(--spu-teal);border-radius:12px;background:#fff;color:var(--spu-teal-d);font:600 .82rem/1 var(--spu-font);white-space:nowrap;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.sptb .sti{font-size:1rem;line-height:1;display:inline-flex;align-items:center}
+.sptb .sti svg{width:16px;height:16px}
+.sptb .stl{display:inline-block}
+.sptb.pri{background:var(--spu-teal);border-color:var(--spu-teal);color:#fff}
+.sptb:disabled{opacity:.45;cursor:default}
+@media (hover:hover){.sptb:not(:disabled):hover{background:#effaf8}.sptb.pri:not(:disabled):hover{background:var(--spu-teal-d)}}
+.sptb:focus-visible{outline:2px solid var(--spu-teal);outline-offset:1px}
+@media (max-width:420px){.sptb{padding:0 7px;gap:3px;font-size:.78rem}}
+/* ---- M14: one chip (Fee Desk's filter chip); .sm is the dense status size; level colours for counters ---- */
+.spchip{position:relative;display:inline-flex;align-items:center;gap:6px;box-sizing:border-box;border:1px solid var(--spu-line);background:#fff;color:var(--spu-ink);border-radius:999px;padding:6px 12px;min-height:36px;font:400 .9rem/1.2 var(--spu-font);white-space:nowrap;font-variant-numeric:tabular-nums}
+button.spchip{cursor:pointer}
+.spchip.on{background:var(--spu-teal);border-color:var(--spu-teal);color:#fff}
+.spchip.sm{gap:4px;padding:1px 9px;min-height:24px;font-size:.78rem}
+.spchip.some{border-color:#99d6cf;background:#effaf8}
+.spchip.near{border-color:#f5c26b;background:#fff7e6;color:#7a4b00}
+.spchip.full{border-color:#f0a878;background:#ffefe3;color:#8a3300;font-weight:600}
+.spchip.over{border-color:#b42318;background:#b42318;color:#fff;font-weight:700}
+.spchip:focus-visible{outline:2px solid var(--spu-teal);outline-offset:1px}

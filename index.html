@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://api.web3forms.com; form-action https://api.web3forms.com; manifest-src 'self'; worker-src 'self'; base-uri 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'none'; manifest-src 'self'; worker-src 'self'; base-uri 'self'">
 <meta name="referrer" content="no-referrer">
 <title>MedBilling Fee Desk</title>
 <meta name="description" content="MedBilling Fee Desk: private Alberta SOMB billing lookup: health service codes, fees by fee skill, modifiers, governing rules and ICD-9 codes.">
@@ -15,10 +15,10 @@
 <meta property="og:title" content="MedBilling Fee Desk">
 <meta property="og:description" content="MedBilling Fee Desk: Alberta SOMB billing lookup for physicians.">
 <meta property="og:site_name" content="MedBilling Fee Desk">
-<meta property="og:image" content="https://tp8p7c4vwr-del.github.io/delara-medbilling/og.jpg">
-<meta property="og:url" content="https://tp8p7c4vwr-del.github.io/delara-medbilling/">
+<meta property="og:image" content="https://jfdelara.github.io/delara-medbilling/og.jpg">
+<meta property="og:url" content="https://jfdelara.github.io/delara-medbilling/">
 <meta property="og:type" content="website">
-<meta name="twitter:image" content="https://tp8p7c4vwr-del.github.io/delara-medbilling/og.jpg">
+<meta name="twitter:image" content="https://jfdelara.github.io/delara-medbilling/og.jpg">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="MedBilling Fee Desk">
 <meta name="twitter:description" content="MedBilling Fee Desk: Alberta SOMB billing lookup for physicians.">
@@ -27,6 +27,9 @@
 <link rel="icon" href="icons/icon-192.png" sizes="192x192">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/shared/suite.css">
+<link rel="stylesheet" href="css/shared/spui.css">
+<link rel="stylesheet" href="css/shared/move.css">
 </head>
 <body>
 <header class="top">
@@ -34,72 +37,42 @@
     <img src="icons/icon-192.png" alt="" width="32" height="32">
     <span class="title" aria-hidden="true">MedBilling Fee Desk</span>
   </a>
-  <label class="jur">
-    <span>Province</span>
-    <select id="jur" aria-label="Province or territory"><option value="AB">Alberta</option></select>
-  </label>
-  <label class="skill">
-    <span>Fee skill</span>
-    <select id="skill" aria-label="Fee skill (SKLL)"></select>
-  </label>
-  <button type="button" id="layoutToggle" class="layoutlink" hidden>Desktop version</button>
 </header>
-<nav class="phonenav" aria-label="Phone navigation">
-  <label class="chip jurchip"><b id="jurChipText">AB</b> ▾<select id="jurChip" aria-label="Province or territory"></select></label>
-  <label class="chip skillchip"><span class="small">Fee skill</span> <b id="skillChipText">OBGY</b> ▾<select id="skillChip" aria-label="Fee skill"></select></label>
-  <div class="morewrap">
-    <button type="button" class="chip" id="moreBtn" aria-haspopup="true" aria-expanded="false">More ▾</button>
-    <div id="moreMenu" class="menu" hidden role="menu">
-      <button role="menuitem" data-tab="procedures">Procedures</button>
-      <button role="menuitem" data-tab="favmanage">★ Manage favourites</button>
-      <button role="menuitem" data-saved="recent">Recent</button>
-      <button role="menuitem" data-tab="icd9" class="needdata">ICD-9</button>
-      <button role="menuitem" data-tab="price" class="needdata">Price list</button>
-      <button role="menuitem" data-tab="rules" class="needdata">Rules</button>
-      <button role="menuitem" data-tab="modifiers" class="abonly">Modifiers</button>
-      <button role="menuitem" data-tab="explanatory" class="abonly">Explanatory</button>
-      <button role="menuitem" data-tab="bulletins" class="abonly">Bulletins</button>
-      <button role="menuitem" data-tab="notes" class="abonly">Claim notes</button>
-      <button role="menuitem" data-tab="resources">Resources &amp; about</button>
-      <a role="menuitem" class="menulink first" href="https://tp8p7c4vwr-del.github.io/delara-medbilling/privacy.html" target="_blank" rel="noopener noreferrer">Privacy policy ↗</a>
-      <a role="menuitem" class="menulink" href="https://tp8p7c4vwr-del.github.io/delara-medbilling/terms.html" target="_blank" rel="noopener noreferrer">Terms of use ↗</a>
-      <a role="menuitem" class="menulink" href="https://tp8p7c4vwr-del.github.io/delara-medbilling/support.html" target="_blank" rel="noopener noreferrer">Support ↗</a>
-      <a role="menuitem" class="menulink" href="licences.html">Open-source licences</a>
-    </div>
-  </div>
-</nav>
-<nav class="tabs" id="tabs" role="tablist">
-  <button data-tab="procedures" class="on">Procedures</button>
-  <button data-tab="favmanage">★ Favourites</button>
-  <button data-tab="price" class="needdata">Price list</button>
-  <button data-tab="rules" class="needdata">Rules</button>
-  <button data-tab="modifiers" class="abonly">Modifiers</button>
-  <button data-tab="explanatory" class="abonly">Explanatory</button>
-  <button data-tab="icd9" class="needdata">ICD-9</button>
-  <button data-tab="bulletins" class="abonly">Bulletins</button>
-  <button data-tab="notes" class="abonly">Claim notes</button>
-  <button data-tab="resources">Resources</button>
+<nav class="tabs sptabs" id="tabs" role="tablist" aria-label="Fee Desk sections">
+  <button type="button" role="tab" data-tab="fav" aria-selected="false"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.8l-5.2 2.8 1-5.8-4.3-4.1 5.9-.9z"/></svg><span>Favourites</span></button>
+  <button type="button" role="tab" data-tab="procedures" class="on" aria-selected="true"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5.5 5.5"/></svg><span>Procedures</span></button>
+  <button type="button" role="tab" data-tab="codes" aria-selected="false"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="4" y="3.5" width="16" height="17" rx="2.5"/><path d="M8 8.5h8M8 12h8M8 15.5h5"/></svg><span>Codes</span></button>
+  <button type="button" role="tab" data-tab="settings" aria-selected="false"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg><span>Settings</span></button>
 </nav>
 
 <main id="main">
   <div id="jurbar" class="jurbar" hidden></div>
+  <div id="codesPick" class="subpick" role="tablist" aria-label="Codes" hidden>
+    <button type="button" role="tab" data-tab="price" class="needdata">Price list</button>
+    <button type="button" role="tab" data-tab="rules" class="needdata">Rules</button>
+    <button type="button" role="tab" data-tab="modifiers" class="abonly">Modifiers</button>
+    <button type="button" role="tab" data-tab="explanatory" class="abonly">Explanatory</button>
+    <button type="button" role="tab" data-tab="icd9" class="needdata">Diagnosis (ICD-9)</button>
+    <button type="button" role="tab" data-tab="bulletins" class="abonly">Bulletins</button>
+    <button type="button" role="tab" data-tab="notes" class="abonly">Claim notes</button>
+    <button type="button" role="tab" data-tab="resources">Resources</button>
+  </div>
   <!-- Procedures -->
   <section id="tab-procedures" class="tab on">
     <form id="qform" class="searchbar needdata" autocomplete="off" role="search">
       <div class="inputwrap">
         <input id="q" type="search" enterkeyhint="search" inputmode="search" autocapitalize="off" spellcheck="false"
-               placeholder="Describe the service or enter an HSC" aria-label="Procedure description">
+               placeholder="Search codes" aria-label="Procedure description">
         <button type="button" id="qclear" class="clear" aria-label="Clear search" hidden>&times;</button>
       </div>
-      <button type="submit" class="primary">Search</button>
-      <button type="button" class="ghost" id="askGeneral">Ask SI/AI</button>
+      <button type="submit" class="primary sptb pri"><span class="stl">Search</span></button>
+      <button type="button" class="ghost sptb" id="askGeneral"><span class="stl">Ask SI</span></button>
     </form>
     <div class="opts needdata">
-      <label><input type="checkbox" id="limitSkill" checked> Limit to fee-skill sections</label>
+      <label><input type="checkbox" id="limitSkill" checked> Limit to specialty sections</label>
       <span id="timehint" class="muted"></span>
     </div>
-    <div class="quick"><button type="button" class="chip" data-saved="fav">★ Favourites</button><button type="button" class="chip" data-saved="recent">Recent</button></div>
-    <div class="split">
+        <div class="split">
       <div class="list" id="results" aria-live="polite"><p class="muted pad">Search runs on this device only. Nothing you type is sent anywhere.</p></div>
       <article class="detail" id="detail" hidden></article>
       <input type="file" id="impFile" accept=".json,application/json" hidden aria-label="Import favourites file">
@@ -109,17 +82,18 @@
   <section id="tab-favmanage" class="tab">
     <div class="fmtools">
       <button type="button" class="primary fmnew" id="fmNew">+ New favourite</button>
-      <div class="inputwrap"><input id="fmq" type="search" enterkeyhint="search" autocapitalize="off" spellcheck="false" placeholder="Search favourites (name, code, ICD-9)" aria-label="Search favourites"></div>
-      <button type="button" class="ghost" id="fmImp">Import CSV</button>
-      <button type="button" class="ghost" id="fmExp">Export CSV</button>
+      <div class="inputwrap"><input id="fmq" type="search" enterkeyhint="search" autocapitalize="off" spellcheck="false" placeholder="Filter favourites" aria-label="Search favourites"></div>
+      <button type="button" class="ghost" id="fmBack">← Favourites</button>
+      <button type="button" class="ghost" id="fmImp">Import spreadsheet (CSV)</button>
+      <button type="button" class="ghost" id="fmExp">Export spreadsheet (CSV)</button>
       <input type="file" id="fmFile" accept=".csv,text/csv" hidden aria-label="Import favourites CSV">
     </div>
-    <p class="small muted">Tap <b>+ New favourite</b> for one code or a bundle of up to 10 lines, or tap ☆ on any code to save it here. Groups and “New group” stay on the Procedures ★ Favourites list. Stored on this device only.</p>
+    <p class="small muted">Tap <b>+ New favourite</b> for one code or a bundle of up to 10 lines, or tap ☆ on any code to save it here. Groups and “+ New group” are on the Favourites list. Stored on this device only.</p>
     <div id="fmList" class="fmlist"></div>
   </section>
 
   <section id="tab-price" class="tab">
-    <div class="searchbar"><div class="inputwrap"><input id="pf" type="search" enterkeyhint="search" placeholder="Filter by HSC, word or section"></div></div>
+    <div class="searchbar"><div class="inputwrap"><input id="pf" type="search" enterkeyhint="search" placeholder="Filter by fee code, word or section"></div></div>
     <div id="pricelist" class="tablewrap"></div>
   </section>
 
@@ -141,7 +115,7 @@
   <section id="tab-icd9" class="tab">
     <form id="iform" class="searchbar" autocomplete="off">
       <div class="inputwrap">
-        <input id="iq" type="search" enterkeyhint="search" placeholder="Search ICD-9 (e.g. pre-eclampsia, 618.0, V22)">
+        <input id="iq" type="search" enterkeyhint="search" placeholder="Search diagnosis (ICD-9) (e.g. pre-eclampsia, 618.0, V22)">
         <button type="button" id="iclear" class="clear" aria-label="Clear" hidden>&times;</button>
       </div>
       <button type="submit" class="primary">Search</button>
@@ -156,6 +130,18 @@
   <section id="tab-resources" class="tab">
     <div id="resources"></div>
   </section>
+  <section id="tab-settings" class="tab">
+    <div class="spset" id="spSettings">
+      <h3>Settings</h3>
+      <div class="sprow jur"><label for="jur">Province</label><select id="jur" aria-label="Province or territory"><option value="AB">Alberta</option></select></div>
+      <div class="sprow skill"><label for="skill">Specialty</label><select id="skill" aria-label="Specialty (fee skill)"></select></div>
+      <div class="sprow"><label for="spSize">Text size</label><input type="range" id="spSize" min="0" max="6" step="1" value="2" aria-label="Text size"></div>
+      <!-- b: the old "Back up favourites & settings" / "Restore from file" row is retired; Export my data / Import my data go here (Import still reads old backup files) -->
+      <div data-mv-anchor hidden></div>
+      <div class="sprow"><label>Layout</label><div class="spbtns"><button type="button" id="layoutToggle" class="layoutlink" hidden>Desktop version</button></div></div>
+    </div>
+    <div class="spset"><h3>About &amp; legal</h3><p class="sphelp"><a href="https://jfdelara.github.io/delara-medbilling/privacy.html" target="_blank" rel="noopener noreferrer">Privacy policy ↗</a> · <a href="https://jfdelara.github.io/delara-medbilling/terms.html" target="_blank" rel="noopener noreferrer">Terms of use ↗</a> · <a href="https://jfdelara.github.io/delara-medbilling/support.html" target="_blank" rel="noopener noreferrer">Support ↗</a> · <a href="licences.html">Open-source licences</a></p></div>
+  </section>
 </main>
 
 <footer class="foot">
@@ -164,27 +150,15 @@
   <div id="srcnote" class="srcnote"></div>
   <p class="small muted">External links for reference; MedBilling Fee Desk is not affiliated.</p>
   <p class="small muted">No patient data is stored. No analytics or trackers. Search runs on this device.</p>
-  <details class="feedback">
-    <summary>Suggest a change</summary>
-    <form id="fb" novalidate>
-      <p class="warn small">Do not include patient names, PHN, DOB, chart or claim numbers.</p>
-      <input type="hidden" name="access_key" value="60e64aa8-fc33-4b85-9742-2a973a88369e">
-      <input type="hidden" name="subject" value="MedBilling Fee Desk feedback">
-      <input type="checkbox" name="botcheck" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
-      <label>Your email (optional)<input type="email" name="email" autocomplete="email"></label>
-      <label>Suggestion<textarea name="message" rows="4" required></textarea></label>
-      <button type="submit" class="primary">Send</button>
-      <p id="fbmsg" class="small" role="status"></p>
-    </form>
-  </details>
-  <p class="legal"><a href="https://tp8p7c4vwr-del.github.io/delara-medbilling/privacy.html">Privacy policy</a> · <a href="https://tp8p7c4vwr-del.github.io/delara-medbilling/terms.html">Terms of use</a> · <a href="https://tp8p7c4vwr-del.github.io/delara-medbilling/support.html">Support</a> · <a href="licences.html">Open-source licences</a></p>
-  <div class="copyright">App design, code and original text © 2026 Jose F de Lara. Fee schedules, codes, descriptions and rules belong to the governments that publish them and are reproduced under their terms (see Sources). They are not covered by this notice.</div>
+  <p class="small feedback-native">Suggest a change: <a href="mailto:delaramedbilling@gmail.com?subject=MedBilling%20Fee%20Desk%20feedback">email delaramedbilling@gmail.com</a>. Do not include patient names, PHN, DOB, chart or claim numbers.</p>
+  <p class="legal"><a href="https://jfdelara.github.io/delara-medbilling/privacy.html">Privacy policy</a> · <a href="https://jfdelara.github.io/delara-medbilling/terms.html">Terms of use</a> · <a href="https://jfdelara.github.io/delara-medbilling/support.html">Support</a> · <a href="licences.html">Open-source licences</a></p>
+  <div class="copyright">App design, code and original text © 2026 Medibrisa. Fee schedules, codes, descriptions and rules belong to the governments that publish them and are reproduced under their terms (see Sources). They are not covered by this notice.</div>
 </footer>
 
 <dialog id="aiDialog">
   <form method="dialog" class="dlg">
-    <h3>Ask SI/AI</h3>
-    <p class="small muted">Opens an outside AI site; you sign in with your own account. Do not include patient details.</p>
+    <h3>Ask SI</h3>
+    <p class="small muted">Opens an outside SI site; you sign in with your own account. Do not include patient details.</p>
     <pre id="aiPrompt" class="prompt"></pre>
     <div id="aiList" class="ailist"></div>
     <div id="aiConfirm" class="confirm" hidden>
@@ -197,6 +171,9 @@
 </dialog>
 <div id="toast" class="toast" hidden></div>
 <script type="module" src="js/shared/boot.js"></script>
+<script src="js/shared/spui.js"></script>
+<script src="js/move-config.js"></script>
+<script src="js/shared/move.js"></script>
 <script src="js/search.js"></script>
 <script src="js/app.js"></script>
 </body>
