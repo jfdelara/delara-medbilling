@@ -113,7 +113,7 @@ body{overflow-x:hidden}
 .layoutlink{background:transparent;border:1px solid rgba(255,255,255,.55);color:#fff;border-radius:999px;padding:4px 10px;font-size:.8rem;cursor:pointer;white-space:nowrap}
 .layoutlink:focus-visible{outline:3px solid #fff;outline-offset:2px}
 .phonenav{display:none}
-html.phone .tabs,html.phone .top .skill,html.phone #askGeneral,html.phone .opts label,html.phone .mobileskill{display:none!important}
+html.phone .top .skill,html.phone #askGeneral,html.phone .opts label,html.phone .mobileskill{display:none!important}
 html.phone .top{padding-top:calc(10px + env(safe-area-inset-top));padding-bottom:10px}
 html.phone .phonenav{display:flex;align-items:center;justify-content:space-between;gap:8px;max-width:1200px;margin:0 auto;padding:10px 12px 0}
 .chip{position:relative;display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:999px;padding:6px 12px;font-size:.9rem;cursor:pointer;min-height:36px}
@@ -146,6 +146,7 @@ html.phone .picklist .icdrow.picked{background:#e6f3f2;outline:2px solid var(--t
 html.phone .picklist [data-medres]{display:none}
 html.phone .foot .dataline,html.phone .foot .disclaimer,html.phone .foot>p.small{display:none}
 html.phone .foot{text-align:center}
+html.phone .foot>p.feedback-native{display:block;margin:8px 0}
 html.phone .feedback summary{color:var(--teal-d);text-decoration:underline;cursor:pointer;list-style:none}
 @media(min-width:700px){html.phone main{max-width:760px}}
 .pfee .fee.big{font-size:2rem;font-weight:700;line-height:1.1}html.phone .picklist .why,html.phone .picklist .icdrow .small.muted{display:none}
@@ -298,6 +299,8 @@ html.phone .fgbody .star,html.phone .fgbody .rowmenu{min-width:44px;min-height:4
 .fgitem{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-height:44px;padding:10px 14px;border:0;border-bottom:1px solid #eef1f4;background:#fff;color:var(--ink);text-align:left;font:inherit;cursor:pointer}
 .fgitem:last-child{border-bottom:0}.fgitem:disabled{color:#a0aab6;cursor:default}
 @media (hover:hover){.fgitem:not(:disabled):hover,.fgopt:hover{background:#f6faf9}}
+/* b5.2 (WCAG 2.4.7 / 1.4.11): sheet buttons get an inset ring (the .fglist clips outside outlines); #0f766e on #fff = 5.5:1 */
+.fgsheet .fgitem:focus-visible,.fgsheet .fgitem[autofocus]:focus{outline:3px solid var(--teal);outline-offset:-3px}
 .fgseg{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:2px 0 10px}
 .fgsegb{display:flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:6px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);font-weight:600;cursor:pointer}
 .fgsegb[aria-checked="true"]{border-color:var(--teal);background:#e6f3f2;color:var(--teal-d);box-shadow:inset 0 0 0 1px var(--teal)}
@@ -582,3 +585,23 @@ html.phone .hit.compact .lchip::after{inset:-10px -1px}
   #results .hit.compact .lnks:has(.lchip[data-lk]){flex-wrap:wrap;row-gap:2px;column-gap:3px;min-width:min-content!important;max-width:none;align-content:center}
   #results .hit.compact .lnks:has(.lchip[data-lk] ~ .lchip[data-lk] ~ .lchip[data-lk]){min-width:4.7rem!important}
 }
+
+/* Suite parity v1 (Fee Desk side; shared look lives in css/shared/suite.css) */
+.pickbar{bottom:var(--tbh,58px)}
+.picktray{bottom:calc(var(--pbh,52px) + var(--tbh,58px))}
+.subpick{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;max-width:1200px;margin:0 auto;padding:10px 12px 0}
+.subpick::-webkit-scrollbar{display:none}
+.subpick[hidden]{display:none}
+.subpick button{flex:0 0 auto;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:999px;padding:6px 12px;font-size:.88rem;white-space:nowrap}
+.subpick button.on{background:var(--teal-d);border-color:var(--teal-d);color:#fff;font-weight:600}
+html.favview #qform,html.favview #tab-procedures .opts,html.favview #detail{display:none!important}
+html.favview #tab-procedures .split{grid-template-columns:1fr}
+#tab-settings .jur{margin-left:0}
+#tab-settings .jur select,#tab-settings .skill select{max-width:none}
+#tab-settings .layoutlink{color:var(--teal-d);border-color:var(--line)}
+html:not(.phone) #tab-settings .layoutrow{display:none}
+.snack{bottom:calc(var(--tbh,58px) + 12px)}
+html.picking .snack{bottom:calc(var(--tbh,58px) + 64px)}
+html.traying .snack{bottom:calc(var(--tbh,58px) + var(--pbh,52px) + var(--trayh,96px) + 8px)}
+html.phone .hit.compact .ccode{white-space:nowrap}
+.hit.heldsaved .rjlist{margin:4px 0 0;padding-left:18px}
