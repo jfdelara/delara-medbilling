@@ -1,6 +1,7 @@
 /* MedBilling Fee Desk - app. Static, offline-capable. No analytics, no trackers, no patient data stored. */
 (function () {
   'use strict';
+  const APP_URL = (typeof window.APP_URL === 'string' && /^https:\/\/[^\s"'<>]+\/$/.test(window.APP_URL)) ? window.APP_URL : 'https://jfdelara.github.io/delara-medbilling/'; // canonical web address; set in js/move-config.js
   const STUDIO_BRAND = 'Medibrisa'; // the one place the studio/brand name lives in app code; no personal name or title on app screens
   const $ = (s, el) => (el || document).querySelector(s);
   const $$ = (s, el) => Array.from((el || document).querySelectorAll(s));
@@ -2036,7 +2037,7 @@
     const L = (u, t) => `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(t)}</a>`;
     return `<div class="card aboutcard"><h3>About MedBilling Fee Desk</h3>
       <p class="small">An independent reference tool made by ${esc(STUDIO_BRAND)}. ${esc(NOT_OFFICIAL)} Fee schedules change; always confirm codes, fees and rules in the current official schedule before you submit a claim.</p>
-      <p class="aboutlinks">${L('https://jfdelara.github.io/delara-medbilling/privacy.html', 'Privacy policy')} · ${L('https://jfdelara.github.io/delara-medbilling/terms.html', 'Terms of use')} · ${L('https://jfdelara.github.io/delara-medbilling/support.html', 'Support')} · <a href="licences.html">Open-source licences</a></p>
+      <p class="aboutlinks">${L(APP_URL + 'privacy.html', 'Privacy policy')} · ${L(APP_URL + 'terms.html', 'Terms of use')} · ${L(APP_URL + 'support.html', 'Support')} · <a href="licences.html">Open-source licences</a></p>
       <p class="small muted">Suggest a change: <a href="mailto:delaramedbilling@gmail.com?subject=MedBilling%20Fee%20Desk%20feedback">delaramedbilling@gmail.com</a>. Do not include patient details.</p></div>`;
   }
   function renderResources() {
