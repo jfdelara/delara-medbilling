@@ -1,4 +1,4 @@
-# deLara MedBilling
+# MedBilling Fee Desk
 
 Alberta SOMB billing lookup — static web app (installable PWA).
 
