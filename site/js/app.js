@@ -2038,7 +2038,7 @@
     return `<div class="card aboutcard"><h3>About MedBilling Fee Desk</h3>
       <p class="small">An independent reference tool made by ${esc(STUDIO_BRAND)}. ${esc(NOT_OFFICIAL)} Fee schedules change; always confirm codes, fees and rules in the current official schedule before you submit a claim.</p>
       <p class="aboutlinks">${L(APP_URL + 'privacy.html', 'Privacy policy')} · ${L(APP_URL + 'terms.html', 'Terms of use')} · ${L(APP_URL + 'support.html', 'Support')} · <a href="licences.html">Open-source licences</a></p>
-      <p class="small muted">Suggest a change: <a href="mailto:delaramedbilling@gmail.com?subject=MedBilling%20Fee%20Desk%20feedback">delaramedbilling@gmail.com</a>. Do not include patient details.</p></div>`;
+      <p class="small muted">Suggest a change: <a href="mailto:admin@medibrisa.com?subject=MedBilling%20Fee%20Desk%20feedback">admin@medibrisa.com</a>. Do not include patient details.</p></div>`;
   }
   function renderResources() {
     const el = $('#resources');
