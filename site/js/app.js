@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   const APP_URL = (typeof window.APP_URL === 'string' && /^https:\/\/[^\s"'<>]+\/$/.test(window.APP_URL)) ? window.APP_URL : 'https://feedesk.medibrisa.com/'; // canonical web address; set in js/move-config.js
-  const STUDIO_BRAND = 'Medibrisa'; // the one place the studio/brand name lives in app code; no personal name or title on app screens
+  const STUDIO_BRAND = 'Medibrisa Software Ltd.'; // the one place the studio/brand name lives in app code; no personal name or title on app screens
   const $ = (s, el) => (el || document).querySelector(s);
   const $$ = (s, el) => Array.from((el || document).querySelectorAll(s));
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
