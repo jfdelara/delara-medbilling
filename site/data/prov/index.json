@@ -8,17 +8,6 @@
    "status": "live"
   },
   {
-   "id": "BC",
-   "name": "British Columbia",
-   "group": "prov",
-   "status": "soon",
-   "message": "Permission to republish the official schedule has been requested. No fees are shown until it is granted.",
-   "why": "The Province of British Columbia does not permit reproduction or redistribution of the MSC Payment Schedule without written permission.",
-   "link": "https://www2.gov.bc.ca/gov/content/health/practitioner-professional-resources/msp/physicians/payment-schedules/msc-payment-schedule",
-   "linkLabel": "MSC Payment Schedule (gov.bc.ca)",
-   "pending": true
-  },
-  {
    "id": "MB",
    "name": "Manitoba",
    "group": "prov",
@@ -32,17 +21,6 @@
    },
    "link": "https://www.manitoba.ca/health/manual/index.html",
    "linkLabel": "Physician's Manual"
-  },
-  {
-   "id": "NB",
-   "name": "New Brunswick",
-   "group": "prov",
-   "status": "soon",
-   "message": "Permission to republish the official schedule has been requested. No fees are shown until it is granted.",
-   "why": "The New Brunswick Physicians’ Manual is © Government of New Brunswick, all rights reserved; republishing it needs the Department of Health’s permission.",
-   "link": "https://www2.gnb.ca/content/dam/gnb/Departments/h-s/pdf/en/Physicians/new_brunswick_physicians_manual.pdf",
-   "linkLabel": "New Brunswick Physicians’ Manual (gnb.ca, PDF)",
-   "pending": true
   },
   {
    "id": "NL",
@@ -59,50 +37,6 @@
    },
    "link": "https://www.gov.nl.ca/hcs/mcp/providers/",
    "linkLabel": "MCP Medical Payment Schedule"
-  },
-  {
-   "id": "NS",
-   "name": "Nova Scotia",
-   "group": "prov",
-   "status": "soon",
-   "message": "Permission to republish the official schedule has been requested. No fees are shown until it is granted.",
-   "why": "Nova Scotia's copyright terms allow non-commercial copies only if the materials are not modified; a searchable re-presentation of the MSI Physician’s Manual needs the Province's permission, which has been requested.",
-   "link": "https://msi.medavie.bluecross.ca/physicians-manual/",
-   "linkLabel": "MSI Physician’s Manual (msi.medavie.bluecross.ca)",
-   "pending": true
-  },
-  {
-   "id": "ON",
-   "name": "Ontario",
-   "group": "prov",
-   "status": "soon",
-   "message": "Permission to republish the official schedule has been requested. No fees are shown until it is granted.",
-   "why": "Ontario permits non-commercial reproduction of the Schedule of Benefits only without changes; a searchable re-presentation needs permission (copyright@ontario.ca).",
-   "link": "https://www.ontario.ca/page/ohip-schedule-benefits-and-fees",
-   "linkLabel": "OHIP Schedule of Benefits and Fees (ontario.ca)",
-   "pending": true
-  },
-  {
-   "id": "PE",
-   "name": "Prince Edward Island",
-   "group": "prov",
-   "status": "soon",
-   "message": "Permission to republish the official schedule has been requested. No fees are shown until it is granted.",
-   "why": "Prince Edward Island permits one unmodified copy for non-commercial use; further copies need the Government of Prince Edward Island's permission (Copyright Permission Request Form).",
-   "link": "https://www.princeedwardisland.ca/sites/default/files/publications/physician_services_agreement_2024-2029.pdf",
-   "linkLabel": "Physician Services Agreement 2024-2029 (princeedwardisland.ca, PDF)",
-   "pending": true
-  },
-  {
-   "id": "QC",
-   "name": "Quebec",
-   "group": "prov",
-   "status": "soon",
-   "message": "Permission to republish the official schedule has been requested. No fees are shown until it is granted.",
-   "why": "Reproduction of the RAMQ manuals requires authorization from the Government of Québec.",
-   "link": "https://www.ramq.gouv.qc.ca/fr/professionnels/medecins-specialistes/manuels/Pages/remuneration-acte.aspx",
-   "linkLabel": "RAMQ manuals: rémunération à l'acte (ramq.gouv.qc.ca)",
-   "pending": true
   },
   {
    "id": "SK",
@@ -140,10 +74,9 @@
    "name": "Nunavut",
    "group": "terr",
    "status": "none",
-   "message": "No current published schedule",
-   "why": "Nunavut has no current published physician fee schedule. The fee schedule in the Medical Care Regulations (consolidated) carries values from the 1990s.",
+   "message": "MedBilling Fee Desk does not include a fee schedule for Nunavut.",
    "link": "https://www.nunavutlegislation.ca/en/file-download/download/public/4785",
-   "linkLabel": "Medical Care Regulations, consolidation (nunavutlegislation.ca, PDF)"
+   "linkLabel": "Medical Care Regulations"
   },
   {
    "id": "YT",
