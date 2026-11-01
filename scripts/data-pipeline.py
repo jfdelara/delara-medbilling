@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MedBilling Fee Desk - Monday data pipeline (what .github/workflows/monday-data-update.yml runs).
+"""MedBilling Fee Desk - Friday data pipeline (what .github/workflows/friday-data-update.yml runs).
 
     python3 scripts/data-pipeline.py run                 # fetch sources, detect change, rebuild site/data, verify, update the lock + SW cache
     python3 scripts/data-pipeline.py run --offline       # no network: use what is already in raw/ (local rehearsal)
@@ -163,7 +163,7 @@ def cmd_run(a):
             if r.returncode and 'update-data' in c[1]: log('update-data download step exited', r.returncode, '(missing files are reported below)')
     if not os.path.exists(os.path.join(RAW, 'manifest.json')):
         result = {'status': 'needs_attention', 'failures': ['raw/manifest.json missing: Alberta discovery failed'], 'held_notes': []}
-        emit(result, '## Fee Desk Monday data check: NEEDS ATTENTION\n\nAlberta source discovery failed (no manifest). Nothing was rebuilt.'); return 2
+        emit(result, '## Fee Desk Friday data check: NEEDS ATTENTION\n\nAlberta source discovery failed (no manifest). Nothing was rebuilt.'); return 2
     exp = expected_sources()
     bad, held = blocking_failures(exp)
     lock = json.load(open(LOCK)) if os.path.exists(LOCK) else {}
@@ -173,9 +173,9 @@ def cmd_run(a):
     result = {'status': 'unchanged', 'changed': changed, 'added': added, 'removed': removed, 'failures': bad, 'held_notes': held + held_changed}
     if bad:
         result['status'] = 'needs_attention'
-        emit(result, '## Fee Desk Monday data check: NEEDS ATTENTION\n\nThese live sources could not be fetched (kept as-is, nothing rebuilt, no partial update):\n\n' + '\n'.join(f'- `{b}`' for b in bad)); return 2
+        emit(result, '## Fee Desk Friday data check: NEEDS ATTENTION\n\nThese live sources could not be fetched (kept as-is, nothing rebuilt, no partial update):\n\n' + '\n'.join(f'- `{b}`' for b in bad)); return 2
     if not live_changed and not a.force:
-        emit(result, '## Fee Desk Monday data check: no change\n\nEvery live source file matches `data-sources.lock.json`.' + (
+        emit(result, '## Fee Desk Friday data check: no change\n\nEvery live source file matches `data-sources.lock.json`.' + (
             '\n\nHeld (not published) sources that changed, note only: ' + ', '.join(held_changed) if held_changed else '')); return 0
     # ---- rebuild (only now touch site/data)
     base = tempfile.mkdtemp(prefix='fd-baseline-'); shutil.copytree(DATA, os.path.join(base, 'data'))
@@ -184,7 +184,7 @@ def cmd_run(a):
         r = run(c)
         if r.returncode:
             result['status'] = 'needs_attention'; result['failures'] = [f'{os.path.basename(c[1])} exited {r.returncode}']
-            emit(result, f'## Fee Desk Monday data check: NEEDS ATTENTION\n\n`{os.path.basename(c[1])}` failed after the sources changed. site/data may be half-written: discard this workspace.'); return 2
+            emit(result, f'## Fee Desk Friday data check: NEEDS ATTENTION\n\n`{os.path.basename(c[1])}` failed after the sources changed. site/data may be half-written: discard this workspace.'); return 2
     mism = []
     for jid in LIVE_PROV:
         r = run([PY, 'scripts/provinces/spotcheck.py', jid], capture_output=True); log(r.stdout)
@@ -193,13 +193,13 @@ def cmd_run(a):
     problems = verify(DATA, os.path.join(base, 'data')) + [f'spot-check {x}' for x in mism]
     if problems:
         result['status'] = 'needs_attention'; result['failures'] = problems
-        emit(result, '## Fee Desk Monday data check: NEEDS ATTENTION\n\nSources changed but the rebuilt data failed its checks. Nothing is published.\n\n' + '\n'.join(f'- {p}' for p in problems)); return 2
+        emit(result, '## Fee Desk Friday data check: NEEDS ATTENTION\n\nSources changed but the rebuilt data failed its checks. Nothing is published.\n\n' + '\n'.join(f'- {p}' for p in problems)); return 2
     sw_old, sw_new = bump_sw(today)
     json.dump({'note': 'SHA-256 of each official source file the committed data was built from. Written by scripts/data-pipeline.py.', 'sources': {k: v for k, v in sorted(exp.items()) if v}}, open(LOCK, 'w'), indent=1)
     open(LOCK, 'a').write('\n')
     meta = json.load(open(os.path.join(DATA, 'meta.json')))
     result.update({'status': 'changed', 'sw_before': sw_old, 'sw_after': sw_new, 'counts': meta['counts'], 'sombEffective': meta['sombEffective']})
-    lines = ['## Fee Desk Monday data update', '', f"SOMB edition effective **{meta['sombEffective']}**. Counts: " + ', '.join(f'{k} {v}' for k, v in meta['counts'].items()) + '.', '',
+    lines = ['## Fee Desk Friday data update', '', f"SOMB edition effective **{meta['sombEffective']}**. Counts: " + ', '.join(f'{k} {v}' for k, v in meta['counts'].items()) + '.', '',
              f'Service-worker cache `{sw_old}` -> `{sw_new}`.', '', f'Sources changed ({len(changed)}), added ({len(added)}), removed ({len(removed)}):', '']
     items = [f'- changed `{k}`' for k in changed] + [f'- added `{k}`' for k in added] + [f'- removed `{k}`' for k in removed]
     lines += items[:25] + ([f'- ... and {len(items) - 25} more'] if len(items) > 25 else [])

@@ -1,12 +1,12 @@
-name: Monday data update
+name: Friday data update
 
-# Runs every Monday at 6:00 AM Mountain Time. GitHub cron is UTC and has no DST, so two crons fire (12:00 and 13:00 UTC)
-# and the "gate" step lets through only the one that is 06:xx in America/Edmonton. Scheduled workflows run only from the
+# Runs every Friday at 6:00 AM Mountain Time (America/Edmonton). GitHub cron is UTC and has no DST, so two crons fire (12:00 and 13:00 UTC)
+# and the "gate" step lets through only the one that is Friday 06:xx in America/Edmonton (Alberta is on permanent UTC-6 since 2026-11-01, so 12:00 UTC; the 13:00 UTC cron only matters on a runner with older tz data that still shows UTC-7). Scheduled workflows run only from the
 # default branch, so this does nothing until it is merged.
 on:
   schedule:
-    - cron: '0 12 * * 1'
-    - cron: '0 13 * * 1'
+    - cron: '0 12 * * 5'
+    - cron: '0 13 * * 5'
   workflow_dispatch:
     inputs:
       force:
@@ -21,13 +21,13 @@ on:
     paths:
       - 'scripts/**'
       - 'tests/pipeline/**'
-      - '.github/workflows/monday-data-update.yml'
+      - '.github/workflows/friday-data-update.yml'
 
 permissions:
   contents: read
 
 concurrency:
-  group: monday-data-update
+  group: friday-data-update
   cancel-in-progress: false
 
 jobs:
@@ -50,12 +50,13 @@ jobs:
       branch: ${{ steps.pr.outputs.branch }}
       sha: ${{ steps.pr.outputs.sha }}
     steps:
-      - name: Gate (06:xx in America/Edmonton)
+      - name: Gate (Friday 06:xx in America/Edmonton)
         id: gate
         run: |
           h=$(TZ=America/Edmonton date +%H)
-          if [ "${{ github.event_name }}" = "schedule" ] && [ "$h" != "06" ]; then
-            echo "run=false" >> "$GITHUB_OUTPUT"; echo "Local hour in Edmonton is $h, not 06: the other cron handles this week."
+          d=$(TZ=America/Edmonton date +%u)
+          if [ "${{ github.event_name }}" = "schedule" ] && { [ "$h" != "06" ] || [ "$d" != "5" ]; }; then
+            echo "run=false" >> "$GITHUB_OUTPUT"; echo "Edmonton local time is weekday $d, hour $h, not Friday (5) 06: the other cron handles this week."
           else
             echo "run=true" >> "$GITHUB_OUTPUT"
           fi
@@ -101,7 +102,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branch"
           git add site data-sources.lock.json
-          git commit -m "Monday data update ${day}: $(python3 -c "import json;print(json.load(open('result.json'))['sw_after'])")"
+          git commit -m "Friday data update ${day}: $(python3 -c "import json;print(json.load(open('result.json'))['sw_after'])")"
           git push origin "$branch"
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"

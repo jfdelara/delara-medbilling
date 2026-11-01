@@ -79,4 +79,24 @@ class CfBundle(unittest.TestCase):
         self.assertIn('redirected', open(os.path.join(out, 'sw.js')).read()); self.assertNotIn('redirected', open(os.path.join(ROOT, 'site', 'sw.js')).read())
         self.assertFalse(os.path.exists(os.path.join(out, '.nojekyll')))
 
+class WorkflowSchedule(unittest.TestCase):
+    """The weekly run is Friday 06:00 America/Edmonton: two UTC crons (DST), gated on Friday + hour 06 local."""
+    def setUp(self):
+        self.wf = open(os.path.join(ROOT, '.github', 'workflows', 'friday-data-update.yml')).read()
+    def test_two_friday_crons(self):
+        import re
+        crons = re.findall(r"cron: '([^']+)'", self.wf)
+        self.assertEqual(crons, ['0 12 * * 5', '0 13 * * 5'])
+    def test_gate_checks_friday_and_edmonton_hour(self):
+        self.assertIn('TZ=America/Edmonton date +%H', self.wf)
+        self.assertIn('TZ=America/Edmonton date +%u', self.wf)
+        self.assertIn('"$d" != "5"', self.wf)
+        self.assertIn('"$h" != "06"', self.wf)
+    def test_no_monday_left(self):
+        self.assertNotIn('monday', self.wf.lower())
+    def test_deploy_only_from_main_and_no_push_trigger(self):
+        self.assertIn("github.ref == 'refs/heads/main'", self.wf)
+        self.assertNotIn('\n  push:', self.wf)
+
+
 if __name__ == '__main__': unittest.main()
