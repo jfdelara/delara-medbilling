@@ -249,7 +249,7 @@
     'Ophthalmology', 'Otolaryngology (ENT)', 'Palliative Care', 'Pathology', 'Physical Medicine & Rehabilitation', 'Plastic Surgery',
     'Radiology', 'Respirology', 'Rheumatology', 'Sports Medicine', 'Thoracic Surgery', 'Urology', 'Vascular Surgery'];
   const cleanName = v => String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
-  // ---- Code groups (v38, Jose Oct 7 8:46 PM): a group is a named bundle of codes billed together (e.g. "C-section", "Clinic visit").
+  // ---- Code groups (v38, owner request Oct 7 8:46 PM): a group is a named bundle of codes billed together (e.g. "C-section", "Clinic visit").
   // Besides its fee and ICD-9 favourites it can hold explicit AHCIP modifiers (Alberta), and the group list sorts A–Z, by most
   // recently used, or in your own order. Those extras live apart from 'mb.favgroups', under 'mb.favgroupx' =
   // {v:1, sort:'az'|'recent'|'custom', used:{<group id>: ISO time}, mods:{<group id>: ['CMGP', ...]}}, so older versions keep
@@ -1101,7 +1101,7 @@
   const RF = () => window.MBRowFmt;
   const shortOf = (t, code, desc) => { const f = RF(); return f ? f.shortLabel(t, code, desc) : (desc || ''); };
   document.addEventListener('mbrowfmt', () => { try { if (typeof refreshSaved === 'function') refreshSaved(); } catch (e) {} });
-  // S1 merge (display only, Jose OK 2026-10-22): an ICD-saved favourite that leads with fee code H, when H is itself a favourite in
+  // S1 merge (display only, owner OK 2026-10-22): an ICD-saved favourite that leads with fee code H, when H is itself a favourite in
   // the same list and is linked back to that ICD-9 only (see dup below), would show the very same row twice. Show only the fee-saved row; stored
   // favourites are untouched. Removal choice: REMOVE BOTH. Un-starring the merged row (its star, or "Remove from favourites" in
   // its ⋯ menu) removes the fee-saved and the merged ICD-saved favourite together, so the row goes in one tap and the hidden
@@ -1139,7 +1139,7 @@
       return line(`data-code="${esc(c.code)}"`, current === c.code ? ' sel' : '', c.display || c.code, c.desc, `<span class="fee">${f.amount == null ? esc(f.label) : money(f.amount)}</span>`, c.desc, 'H');
     }
     if (lead) { const c = BYCODE[splitKey(lead).code], f = feeFor(c);
-      // S1 (Jose OK 2026-10-22): an ICD-saved favourite led by its fee code opens / sends that fee code; in a Dx pick it sends the ICD-9
+      // S1 (owner OK 2026-10-22): an ICD-saved favourite led by its fee code opens / sends that fee code; in a Dx pick it sends the ICD-9
       return line(`data-icd="${esc(code)}" data-code="${esc(c.code)}" data-lead="1"`, '', c.display || c.code, c.desc, `<span class="fee">${f.amount == null ? esc(f.label) : money(f.amount)}</span>`, c.desc, 'H'); }
     const i = ICDBY[code]; if (!i) return '';
     return line(`data-icd="${esc(i.code)}"`, '', i.code, icdLabel(i), '<span class="small muted">ICD-9</span>', icdLabel(i), 'I');

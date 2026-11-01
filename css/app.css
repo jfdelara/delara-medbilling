@@ -468,7 +468,7 @@ html.phone .mgrp{min-height:36px}
 @media (max-width:480px){.fgh:has(.fgsend) .fgtype span,.fgtoggle:has(.fgwhen) .fgtype span{display:none}.fgh:has(.fgsend) .fgtype,.fgtoggle:has(.fgwhen) .fgtype{padding:1px 4px}.fgsortb{padding:0 9px}}
 .fgaddseg.n2{grid-template-columns:1fr 1fr}.fgaddseg.n3{grid-template-columns:repeat(3,1fr)}.fgaddseg.n4{grid-template-columns:repeat(4,1fr)}
 .gmod .gsp{flex:0 0 auto;min-width:32px}html.phone .gmod .gsp{min-width:44px}@media (pointer:coarse){.gmod .gsp{min-width:44px}}
-/* v39 slim Favourites (Jose Oct 9): every favourite is ONE line: code · description … · linked chips · fee · ★ · ⋯.
+/* v39 slim Favourites (owner request Oct 9): every favourite is ONE line: code · description … · linked chips · fee · ★ · ⋯.
    The description truncates first; only the linked chips wrap (inside their own box) when they really don't fit.
    Chips show just the code in a narrow list and code + short title when the list is wide. */
 .hit.compact.haslinks,#results .hit.compact.haslinks{flex-wrap:nowrap;row-gap:0;padding-top:2px;padding-bottom:2px}
@@ -550,7 +550,7 @@ html.phone .hit.compact .lchip::after{inset:-10px -1px}
 #results .hit:not(.compact):has(.pdet){padding-bottom:52px}
 @media (max-width:600px){html.picking #results .hit.compact{flex-wrap:wrap;row-gap:2px;max-width:100%;min-width:0}html.picking #results .hit.compact .cdesc.short{min-width:0;flex:1 1 auto}}
 .fee.lkp{flex:0 0 auto;font-size:.82rem;font-weight:700;white-space:nowrap;color:var(--ink);margin-left:auto}
-/* v44 (Jose OK 2026-10-22): search cards show no full-description line. .hdesc stays in the DOM (aria-hidden; the full text is in
+/* v44 (owner OK 2026-10-22): search cards show no full-description line. .hdesc stays in the DOM (aria-hidden; the full text is in
    the card's aria-label and the label's title) as an invisible layer under the row, so a tap on it is still the card itself
    (MedBilling Logs multipick-v9l taps .hdesc). row1 sits above it so ☆, ＋ and Details stay reachable. */
 #results .hit:not(.compact) .hdesc,html.phone #results .hit:not(.compact) .hdesc{position:absolute;inset:0;display:block;opacity:0;overflow:hidden;color:transparent;pointer-events:none;margin:0;padding:0}

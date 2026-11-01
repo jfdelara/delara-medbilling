@@ -1,6 +1,6 @@
 // Curated short labels (2-3 words) for code rows, shared by Fee Desk and MedBilling Logs.
 // Plain ES module, no dependencies. Keys: 'H:<fee code>' or 'I:<ICD-9 code>' (Alberta). Full descriptions stay in the data files.
-// Medical wording to be reviewed by Jose.
+// Medical wording to be reviewed by the owner.
 export const SHORT_NAMES = Object.freeze({
   'H:80.19B': 'Myomectomy',
   'H:66.4A': 'Lysis of adhesions',
