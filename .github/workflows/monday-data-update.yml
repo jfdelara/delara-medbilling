@@ -1,0 +1,144 @@
+name: Monday data update
+
+# Runs every Monday at 6:00 AM Mountain Time. GitHub cron is UTC and has no DST, so two crons fire (12:00 and 13:00 UTC)
+# and the "gate" step lets through only the one that is 06:xx in America/Edmonton. Scheduled workflows run only from the
+# default branch, so this does nothing until it is merged.
+on:
+  schedule:
+    - cron: '0 12 * * 1'
+    - cron: '0 13 * * 1'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Rebuild even if no source file changed'
+        type: boolean
+        default: false
+      dry_run:
+        description: 'Check and build only: no PR, no deploy, no dispatch'
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - 'scripts/**'
+      - 'tests/pipeline/**'
+      - '.github/workflows/monday-data-update.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: monday-data-update
+  cancel-in-progress: false
+
+jobs:
+  tests:
+    # unit tests of the pipeline itself: no network
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m unittest discover -s tests/pipeline -v
+
+  update:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      status: ${{ steps.pipeline.outputs.status }}
+      branch: ${{ steps.pr.outputs.branch }}
+      sha: ${{ steps.pr.outputs.sha }}
+    steps:
+      - name: Gate (06:xx in America/Edmonton)
+        id: gate
+        run: |
+          h=$(TZ=America/Edmonton date +%H)
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$h" != "06" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"; echo "Local hour in Edmonton is $h, not 06: the other cron handles this week."
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.run == 'true'
+
+      - name: Install tools
+        if: steps.gate.outputs.run == 'true'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils
+
+      - name: Check official sources and rebuild if they changed
+        id: pipeline
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          set +e
+          args=""
+          if [ "${{ inputs.force }}" = "true" ]; then args="--force"; fi
+          python3 scripts/data-pipeline.py run $args
+          code=$?
+          status=$(python3 -c "import json;print(json.load(open('result.json'))['status'])" 2>/dev/null || echo needs_attention)
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit $code
+
+      - name: Unit tests
+        if: steps.gate.outputs.run == 'true' && steps.pipeline.outputs.status == 'changed'
+        run: python3 -m unittest discover -s tests/pipeline -v
+
+      - name: Build the Cloudflare bundle
+        if: steps.gate.outputs.run == 'true' && steps.pipeline.outputs.status == 'changed'
+        run: python3 scripts/cf-bundle.py --src site --out dist-cf
+
+      - name: Commit to a new branch and open a PR
+        id: pr
+        if: steps.gate.outputs.run == 'true' && steps.pipeline.outputs.status == 'changed' && inputs.dry_run != true
+        env:
+          GH_TOKEN: ${{ secrets.CROSS_REPO_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+          day=$(date -u +%Y%m%d)
+          branch="data/auto-${day}-${GITHUB_RUN_ID}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add site data-sources.lock.json
+          git commit -m "Monday data update ${day}: $(python3 -c "import json;print(json.load(open('result.json'))['sw_after'])")"
+          git push origin "$branch"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          gh pr create --base "${{ github.event.repository.default_branch }}" --head "$branch" \
+            --title "Fee Desk data update ${day}" --body-file pr-body.md
+
+      - name: Deploy to Cloudflare Pages (main only)
+        id: deploy
+        # This step is the gate for "do not deploy": it cannot run from any branch except main.
+        if: github.ref == 'refs/heads/main' && steps.pr.outputs.sha != '' && inputs.dry_run != true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CLOUDFLARE_API_TOKEN}" ] || [ -z "${CLOUDFLARE_ACCOUNT_ID}" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID secrets are not set"; exit 1
+          fi
+          npx --yes wrangler@3 pages deploy dist-cf --project-name medibrisa-feedesk --branch main --commit-dirty=true
+          want=$(grep -o "const V = '[^']*'" dist-cf/sw.js | head -1)
+          for i in 1 2 3 4 5 6; do
+            got=$(curl -fsS "https://feedesk.medibrisa.com/sw.js?cb=$RANDOM" | grep -o "const V = '[^']*'" | head -1 || true)
+            [ "$got" = "$want" ] && { echo "live: $got"; exit 0; }
+            sleep 10
+          done
+          echo "::error::feedesk.medibrisa.com is not serving $want"; exit 1
+
+      - name: Tell Logs and the iOS project that the data changed
+        if: steps.deploy.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.CROSS_REPO_TOKEN }}
+        run: |
+          if [ -z "${GH_TOKEN}" ]; then echo "::warning::CROSS_REPO_TOKEN is not set: Logs and iOS were NOT notified"; exit 0; fi
+          for repo in "${{ github.repository_owner }}/medbilling-logs" "${{ github.repository_owner }}/feedesk-ios"; do
+            gh api "repos/${repo}/dispatches" -f event_type=feedesk-data-updated \
+              -f "client_payload[sha]=${{ steps.pr.outputs.sha }}" \
+              -f "client_payload[branch]=${{ steps.pr.outputs.branch }}" \
+              -f "client_payload[run_url]=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "dispatched feedesk-data-updated to ${repo}"
+          done
