@@ -137,6 +137,7 @@ jobs:
           if [ -z "${GH_TOKEN}" ]; then echo "::warning::CROSS_REPO_TOKEN is not set: Logs and iOS were NOT notified"; exit 0; fi
           for repo in "${{ github.repository_owner }}/medbilling-logs" "${{ github.repository_owner }}/feedesk-ios"; do
             gh api "repos/${repo}/dispatches" -f event_type=feedesk-data-updated \
+              -f "client_payload[repo]=${GITHUB_REPOSITORY}" \
               -f "client_payload[sha]=${{ steps.pr.outputs.sha }}" \
               -f "client_payload[branch]=${{ steps.pr.outputs.branch }}" \
               -f "client_payload[run_url]=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
