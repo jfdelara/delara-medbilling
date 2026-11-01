@@ -10,7 +10,7 @@ The site files live in `site/` and are deployed to GitHub Pages by `.github/work
 
 The app-code constant is `window.APP_URL` in `site/js/move-config.js` (used by the About links in `site/js/app.js`).
 These other places hard-code the address and must change in the same commit when the site moves
-(now `https://feedesk.medibrisa.com/`; previously `https://jfdelara.github.io/delara-medbilling/`):
+(now `https://feedesk.medibrisa.com/`):
 
 - `site/index.html`: og:image, og:url, twitter:image (meta, lines ~18-21); Settings "About & legal" links (~143); footer legal links (~154)
 - `site/privacy.html` line ~45 and `site/terms.html` line ~45 (web-version link and its visible text)
