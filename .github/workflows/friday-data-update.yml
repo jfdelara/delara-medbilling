@@ -87,7 +87,7 @@ jobs:
 
       - name: Build the Cloudflare bundle
         if: steps.gate.outputs.run == 'true' && steps.pipeline.outputs.status == 'changed'
-        run: python3 scripts/cf-bundle.py --src site --out dist-cf
+        run: python3 scripts/cf-bundle.py --src site --out dist-cf && python3 scripts/landing-bundle.py --out dist-landing
 
       - name: Commit to a new branch and open a PR
         id: pr
@@ -121,14 +121,16 @@ jobs:
           if [ -z "${CLOUDFLARE_API_TOKEN}" ] || [ -z "${CLOUDFLARE_ACCOUNT_ID}" ]; then
             echo "::error::CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID secrets are not set"; exit 1
           fi
-          npx --yes wrangler@3 pages deploy dist-cf --project-name medibrisa-feedesk --branch main --commit-dirty=true
-          want=$(grep -o "const V = '[^']*'" dist-cf/sw.js | head -1)
+          # Fee Desk is app-only: the website is the "Get the app" page + legal pages (dist-landing), never the web app (site/).
+          npx --yes wrangler@3 pages deploy dist-landing --project-name medibrisa-feedesk --branch main --commit-dirty=true
           for i in 1 2 3 4 5 6; do
-            got=$(curl -fsS "https://feedesk.medibrisa.com/sw.js?cb=$RANDOM" | grep -o "const V = '[^']*'" | head -1 || true)
-            [ "$got" = "$want" ] && { echo "live: $got"; exit 0; }
+            if curl -fsS "https://feedesk.medibrisa.com/?cb=$RANDOM" | grep -q "Get the app" && \
+               curl -fsS "https://feedesk.medibrisa.com/privacy?cb=$RANDOM" | cmp -s - dist-landing/privacy.html; then
+              echo "live: landing page + current privacy policy"; exit 0
+            fi
             sleep 10
           done
-          echo "::error::feedesk.medibrisa.com is not serving $want"; exit 1
+          echo "::error::feedesk.medibrisa.com is not serving the landing bundle"; exit 1
 
       - name: Tell Logs and the iOS project that the data changed
         if: steps.deploy.outcome == 'success'

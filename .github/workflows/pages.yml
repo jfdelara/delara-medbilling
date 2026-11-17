@@ -40,6 +40,9 @@ jobs:
           git add -A site && (git diff --cached --quiet || (git commit -m "Add .nojekyll" && git push origin HEAD:main))
           git subtree split --prefix site -b pages-tmp
           git push -f origin pages-tmp:refs/heads/pages-src
+          # GitHub Pages gets the public "Get the app" page + legal pages only (Fee Desk is app-only; site/ stays private source).
           if git ls-remote --exit-code --heads origin gh-pages >/dev/null; then
-            git push -f origin pages-tmp:refs/heads/gh-pages
+            python3 scripts/landing-bundle.py --out /tmp/landing
+            git worktree add --detach /tmp/ghp
+            ( cd /tmp/ghp && git checkout --orphan gh-pages-new && git rm -rfq . && cp -a /tmp/landing/. . && git add -A && git commit -qm "Get the app page" && git push -f origin HEAD:refs/heads/gh-pages )
           fi
