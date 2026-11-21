@@ -52,10 +52,57 @@ def download(url, dest):
     log('  !! not a PDF after retries:', url)
     return False
 
-def pdftext(pdf):
+def pdftext(pdf, key=None):
     txt = pdf[:-4] + '.txt'
-    subprocess.run(['pdftotext', '-layout', pdf, txt], check=True)
+    if key in BBOX:
+        # SOMB lists: render from word positions, not -layout (whose column guesses moved with the 2026-11-16 edition)
+        args = rules_geometry(pdf) if key == 'rules' else BBOX[key]
+        open(txt, 'w', encoding='utf-8').write(bbox_text(pdf, *args))
+    else:
+        subprocess.run(['pdftotext', '-layout', pdf, txt], check=True)
     return open(txt, encoding='utf-8', errors='replace').read()
+
+# (x0, unit) per SOMB list: a word at x points starts at column round((x - x0) / unit), which puts the parsers' anchor
+# columns where they expect them (price: HSC at 10, modifier lines 26-32, call ranges 33+; procedure: HSC <= 14;
+# rules: rule numbers at 4-10; modifier definitions: type at 17, code at 25, description at 36).
+BBOX = {'price': (13.7, 4.8), 'procedure': (23.3, 4.8), 'rules': None, 'modifiers': (42.62, 3.0)}
+
+def rules_geometry(pdf):
+    """The governing rules list changed font size between editions (6.0 pt glyphs in 2026-04, 5.4 pt in 2026-11), so calibrate:
+    second-level rule numbers (e.g. 1.2) go to column 6 and columns scale with the glyph width (4.0 at 6.0 pt)."""
+    out = subprocess.run(['pdftotext', '-bbox', pdf, '-'], capture_output=True, text=True, check=True).stdout
+    widths = collections.Counter(); xs = collections.Counter()
+    for x, X, t in re.findall(r'<word xMin="([\d.]+)" yMin="[\d.]+" xMax="([\d.]+)" yMax="[\d.]+">([^<]*)</word>', out):
+        if len(t) >= 4: widths[round((float(X) - float(x)) / len(html.unescape(t)), 1)] += 1
+        if re.fullmatch(r'\d{1,2}\.\d{1,2}', t): xs[round(float(x), 1)] += 1
+    glyph = widths.most_common(1)[0][0]; anchor = xs.most_common(1)[0][0]
+    unit = 4.0 * glyph / 6.0
+    return (anchor - 6 * unit, unit, True)
+
+import html, collections
+def bbox_text(pdf, x0, unit, tight=False):
+    """Deterministic text rendering of a PDF from pdftotext -bbox word boxes (independent of -layout heuristics).
+    A word starts at column round((xMin - x0) / unit). tight=True: only the first word of a line is
+    positioned and the rest follow after one space (justified running text); otherwise the true spacing is kept (tables)."""
+    out = subprocess.run(['pdftotext', '-bbox', pdf, '-'], capture_output=True, text=True, check=True).stdout
+    pages = []
+    for pg in re.findall(r'<page[^>]*>(.*?)</page>', out, re.S):
+        rows = {}
+        for x, y, X, Y, t in re.findall(r'<word xMin="([\d.]+)" yMin="([\d.]+)" xMax="([\d.]+)" yMax="([\d.]+)">([^<]*)</word>', pg):
+            if float(Y) - float(y) > 20: continue  # large rotated watermark letters (e.g. SUPERSEDED), not text
+            yy = float(y)
+            key = next((k for k in rows if abs(k - yy) <= 2.0), yy)  # same printed line (baseline jitter)
+            rows.setdefault(key, []).append((float(x), float(X), html.unescape(t)))
+        lines = []
+        for y in sorted(rows):
+            s = ''; prev = None
+            for x, X, t in sorted(rows[y]):
+                col = max(0, round((x - x0) / unit))
+                if s and (col <= len(s) or tight): col = len(s) + 1
+                s += ' ' * (col - len(s)) + t; prev = X
+            lines.append(s)
+        pages.append('\n'.join(lines))
+    return '\f'.join(pages)
 
 import urllib.parse
 
@@ -315,13 +362,15 @@ def parse_modifiers(text):
     types = []; cur = None; sub = None
     for phys, label, page in pages_of(text):
         for line in page.split('\n'):
-            if HEADER_LINE.match(line) or 'MODIFIER DEFINITIONS' in line or re.match(r'^\s+RG122', line): continue
+            if HEADER_LINE.match(line) or 'MODIFIER DEFINITIONS' in re.sub(r'\s+', ' ', line) or re.match(r'^\s+RG122', line): continue
             m = re.match(r'^ {17}([A-Z0-9/+]{2,6})\s+(\S.*)$', line)
             if m and not line.startswith(' ' * 18):
                 cur = {'type': m.group(1), 'text': m.group(2).strip(), 'codes': [], 'page': phys}
                 types.append(cur); sub = None; continue
             m = re.match(r'^ {25}([A-Z0-9/+.]{2,8})\s+(\S.*)$', line)
-            if m and cur is not None and not line.startswith(' ' * 26):
+            if m and cur is not None and not line.startswith(' ' * 26) and m.start(2) >= 35 \
+                    and not m.group(1).endswith('.') and not m.group(1).isdigit() \
+                    and m.group(1).rstrip('.') not in ('MINUTE', 'MINUTES', 'UNIT', 'UNITS'):  # description in its own column; wrapped text is not a code
                 sub = {'code': m.group(1), 'text': m.group(2).strip()}
                 cur['codes'].append(sub); continue
             if line.strip() and cur is not None:
@@ -438,7 +487,7 @@ def main():
     if '--download-only' in sys.argv:  # data-pipeline.py: fetch the sources and write raw/manifest.json, parse nothing
         log('download-only: sources in raw/, manifest written'); return
     res = {r['key']: r for r in man['somb']['resources']}
-    T = {k: pdftext(os.path.join(RAW, r['file'])) for k, r in res.items()}
+    T = {k: pdftext(os.path.join(RAW, r['file']), k) for k, r in res.items()}
     price = parse_price(T['price'])
     procs = parse_procedures(T['procedure'], price)
     log('price codes', len(price), 'procedure entries', len(procs))
