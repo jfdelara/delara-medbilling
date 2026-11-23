@@ -1,6 +1,6 @@
 {
-  "name": "MedBilling Fee Desk",
-  "short_name": "Fee Desk",
+  "name": "Medibrisa MedBilling Fee Desk",
+  "short_name": "Medibrisa Fee Desk",
   "description": "Alberta SOMB billing lookup",
   "start_url": "./index.html",
   "scope": "./",
