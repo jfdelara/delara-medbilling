@@ -1,11 +1,12 @@
-"""Unit tests for scripts/data-pipeline.py and scripts/cf-bundle.py. No network. Run: python3 -m unittest discover -s tests/pipeline -v"""
-import importlib.util, json, os, shutil, tempfile, unittest
+"""Unit tests for scripts/data-pipeline.py, scripts/cf-bundle.py and scripts/landing-bundle.py. No network. Run: python3 -m unittest discover -s tests/pipeline -v"""
+import importlib.util, json, os, re, shutil, tempfile, unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 def load(name, file):
     spec = importlib.util.spec_from_file_location(name, os.path.join(ROOT, 'scripts', file)); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m); return m
 dp = load('data_pipeline', 'data-pipeline.py')
 cf = load('cf_bundle', 'cf-bundle.py')
+lb = load('landing_bundle', 'landing-bundle.py')
 
 class DiffLock(unittest.TestCase):
     def test_no_change(self):
@@ -97,6 +98,58 @@ class WorkflowSchedule(unittest.TestCase):
     def test_deploy_only_from_main_and_no_push_trigger(self):
         self.assertIn("github.ref == 'refs/heads/main'", self.wf)
         self.assertNotIn('\n  push:', self.wf)
+    def test_deploys_landing_bundle_and_smokes_web_preview(self):
+        self.assertIn('landing-bundle.py --out dist-landing', self.wf)
+        self.assertIn('feedesk.medibrisa.com/web/', self.wf)
+        self.assertIn('web/data/meta.json', self.wf)
+
+class LandingBundle(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(); self.out = os.path.join(self.tmp, 'dist-landing')
+    def tearDown(self): shutil.rmtree(self.tmp, ignore_errors=True)
+    def test_root_stays_get_the_app_and_web_gets_the_full_app(self):
+        lb.build(self.out)
+        root = os.listdir(self.out)
+        self.assertIn('index.html', root); self.assertIn('privacy.html', root); self.assertIn('web', root)
+        self.assertNotIn('js', root); self.assertNotIn('css', root); self.assertNotIn('data', root)
+        self.assertNotIn('manifest.webmanifest', root)
+        landing = open(os.path.join(self.out, 'index.html'), encoding='utf-8').read()
+        self.assertIn('Get the app', landing); self.assertIn('href="web/"', landing)
+        self.assertNotIn('id="q"', landing)
+        web_index = open(os.path.join(self.out, 'web', 'index.html'), encoding='utf-8').read()
+        self.assertIn('id="q"', web_index)
+        self.assertIn('js/web-preview.js', web_index)
+        self.assertIn('css/web-preview.css', web_index)
+        self.assertIn('web-preview-banner', web_index)
+        self.assertIn('web-preview-gate', web_index)
+        self.assertIn('js/app.js', web_index)
+        self.assertNotIn("href=\"/css/", web_index)
+        self.assertNotIn("src=\"/js/", web_index)
+        self.assertNotIn("href=\"/data/", web_index)
+        preview = open(os.path.join(self.out, 'web', 'js', 'web-preview.js'), encoding='utf-8').read()
+        self.assertIn("WEB_PREVIEW_ENABLED = true", preview)
+        self.assertIn("WEB_PREVIEW_EXPIRES_AT = '2027-05-24T00:00:00-06:00'", preview)
+        self.assertTrue(os.path.isfile(os.path.join(self.out, 'web', 'js', 'app.js')))
+        self.assertTrue(os.path.isfile(os.path.join(self.out, 'web', 'css', 'app.css')))
+        self.assertTrue(os.path.isfile(os.path.join(self.out, 'web', 'data', 'meta.json')))
+        self.assertTrue(os.path.isfile(os.path.join(self.out, 'web', 'data', 'codes.json')))
+        self.assertTrue(os.path.isfile(os.path.join(self.out, 'web', 'icons', 'icon-192.png')))
+        meta = json.load(open(os.path.join(self.out, 'web', 'data', 'meta.json')))
+        self.assertTrue(meta)
+        sw = open(os.path.join(self.out, 'web', 'sw.js'), encoding='utf-8').read()
+        self.assertIn('web-preview.js', sw)
+        self.assertIn('redirected', sw)
+        self.assertIn('-webpreview', sw)
+        redirects = open(os.path.join(self.out, '_redirects'), encoding='utf-8').read()
+        self.assertIn('/web /web/ 308', redirects)
+        leaked = []
+        for dirpath, _, files in os.walk(self.out):
+            for name in files:
+                if not name.endswith(('.html', '.js', '.css', '.webmanifest', '.md')): continue
+                text = open(os.path.join(dirpath, name), encoding='utf-8').read()
+                if re.search(r'\bJose\b', text) or re.search(r'jfdelara', text, re.I):
+                    leaked.append(os.path.join(dirpath, name))
+        self.assertEqual(leaked, [])
 
 
 if __name__ == '__main__': unittest.main()

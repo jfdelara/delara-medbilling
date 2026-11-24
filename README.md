@@ -2,9 +2,11 @@
 
 Alberta SOMB billing lookup — static web app (installable PWA).
 
-Live: https://feedesk.medibrisa.com/
+Live: https://feedesk.medibrisa.com/ (Get the app) · https://feedesk.medibrisa.com/web/ (free web preview through 23 May 2027)
 
-The site files live in `site/` and are deployed to GitHub Pages by `.github/workflows/pages.yml` on every push to `main`.
+`landing/` is the public home page. `site/` is the Fee Desk app (native builds vendor it; `scripts/landing-bundle.py` also publishes it at `/web/`). Push to `main` deploys via `.github/workflows/pages.yml` (GitHub Pages) and the Friday pipeline (Cloudflare Pages, `dist-landing`).
+
+To hide `/web/` early, set `WEB_PREVIEW_ENABLED = false` in `landing/web-preview.js`. To omit `/web/` from the public site, set `INCLUDE_WEB_PREVIEW = False` in `scripts/landing-bundle.py`.
 
 ## Switching the web address
 
