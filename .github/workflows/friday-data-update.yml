@@ -121,12 +121,14 @@ jobs:
           if [ -z "${CLOUDFLARE_API_TOKEN}" ] || [ -z "${CLOUDFLARE_ACCOUNT_ID}" ]; then
             echo "::error::CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID secrets are not set"; exit 1
           fi
-          # Fee Desk is app-only: the website is the "Get the app" page + legal pages (dist-landing), never the web app (site/).
+          # Public site is dist-landing: / is Get-the-app + legal pages; /web/ is the Fee Desk web preview (from site/).
           npx --yes wrangler@3 pages deploy dist-landing --project-name medibrisa-feedesk --branch main --commit-dirty=true
           for i in 1 2 3 4 5 6; do
             if curl -fsS "https://feedesk.medibrisa.com/?cb=$RANDOM" | grep -q "Get the app" && \
-               curl -fsS "https://feedesk.medibrisa.com/privacy?cb=$RANDOM" | cmp -s - dist-landing/privacy.html; then
-              echo "live: landing page + current privacy policy"; exit 0
+               curl -fsS "https://feedesk.medibrisa.com/privacy?cb=$RANDOM" | cmp -s - dist-landing/privacy.html && \
+               curl -fsS "https://feedesk.medibrisa.com/web/?cb=$RANDOM" | grep -q 'id="q"' && \
+               curl -fsS "https://feedesk.medibrisa.com/web/data/meta.json?cb=$RANDOM" | python3 -c "import json,sys; json.load(sys.stdin)"; then
+              echo "live: landing page + current privacy policy + /web/ Fee Desk preview"; exit 0
             fi
             sleep 10
           done
