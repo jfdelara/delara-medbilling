@@ -6,7 +6,9 @@ Live: https://feedesk.medibrisa.com/ (Get the app) · https://feedesk.medibrisa.
 
 `landing/` is the public home page. `site/` is the Fee Desk app (native builds vendor it; `scripts/landing-bundle.py` also publishes it at `/web/`). Push to `main` deploys via `.github/workflows/pages.yml` (GitHub Pages) and the Friday pipeline (Cloudflare Pages, `dist-landing`).
 
-To hide `/web/` early, set `WEB_PREVIEW_ENABLED = false` in `landing/web-preview.js`. To omit `/web/` from the public site, set `INCLUDE_WEB_PREVIEW = False` in `scripts/landing-bundle.py`.
+To hide `/web/` early (ended notice, app UI blocked in the browser), set `WEB_PREVIEW_ENABLED = false` in `landing/web-preview.js`. That is a client-side flag, not access control: the app files remain in the bundle until you omit `/web/` entirely.
+
+To omit `/web/` from the public site, set `INCLUDE_WEB_PREVIEW = False` in `scripts/landing-bundle.py` (this also removes the landing-page link). Then drop the `/web/` smoke checks in `.github/workflows/friday-data-update.yml` before the next main deploy.
 
 ## Switching the web address
 

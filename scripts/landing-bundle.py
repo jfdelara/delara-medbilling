@@ -17,18 +17,20 @@ Usage: python3 scripts/landing-bundle.py [--out dist-landing]
 import argparse, importlib.util, os, re, shutil, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-# Set False to omit /web/ from the public bundle. The JS flag WEB_PREVIEW_ENABLED only hides the UI.
+# Set False to omit /web/ from the public bundle (also strips the landing-page link).
+# WEB_PREVIEW_ENABLED in landing/web-preview.js only hides the UI; the files stay published.
 INCLUDE_WEB_PREVIEW = True
 
 PREVIEW_JS_TAG = '<script src="js/web-preview.js"></script>'
 PREVIEW_CSS_TAG = '<link rel="stylesheet" href="css/web-preview.css">'
 ASSETS_NEEDLE = "'css/app.css'"
 ASSETS_WITH_PREVIEW = "'css/app.css', 'css/web-preview.css', 'js/web-preview.js'"
-HEAD_CHARSET = '<meta charset="utf-8">'
+CSP_META_RE = re.compile(r'<meta http-equiv="Content-Security-Policy"[^>]*>\n')
 MOVE_CSS = '<link rel="stylesheet" href="css/shared/move.css">'
 HEADER_END = '</header>\n<nav class="tabs'
 OG_URL = '<meta property="og:url" content="https://feedesk.medibrisa.com/">'
 OG_URL_WEB = '<meta property="og:url" content="https://feedesk.medibrisa.com/web/">'
+LANDING_WEBNOTE_RE = re.compile(r'\n<p class="webnote">.*?</p>', re.S)
 REDIRECTS = '# Trailing slash so relative css/js/data URLs resolve under /web/.\n/web /web/ 308\n'
 
 def _load_cf():
@@ -56,7 +58,10 @@ def _install_web_preview(web, landing):
 
     index_path = os.path.join(web, 'index.html')
     html = _read(index_path)
-    html = _must_replace(html, HEAD_CHARSET, HEAD_CHARSET + '\n' + PREVIEW_JS_TAG, 'web/index.html charset')
+    m = CSP_META_RE.search(html)
+    if not m:
+        raise SystemExit('landing-bundle: Content-Security-Policy meta not found in web/index.html')
+    html = html[:m.end()] + PREVIEW_JS_TAG + '\n' + html[m.end():]
     html = _must_replace(html, MOVE_CSS, MOVE_CSS + '\n' + PREVIEW_CSS_TAG, 'web/index.html stylesheets')
     html = _must_replace(html, OG_URL, OG_URL_WEB, 'web/index.html og:url')
     html = _must_replace(html, '<body>\n', '<body>\n' + gate, 'web/index.html <body>')
@@ -77,15 +82,20 @@ def build(out_rel='dist-landing'):
     site = os.path.join(ROOT, 'site')
     shutil.rmtree(out, ignore_errors=True)
     os.makedirs(out)
-    for f in ('index.html', 'sw.js'):
-        shutil.copy(os.path.join(landing, f), out)
+    landing_index = _read(os.path.join(landing, 'index.html'))
+    if not INCLUDE_WEB_PREVIEW:
+        landing_index, n = LANDING_WEBNOTE_RE.subn('', landing_index, count=1)
+        if n != 1:
+            raise SystemExit('landing-bundle: expected the free-web-preview note in landing/index.html')
+    _write(os.path.join(out, 'index.html'), landing_index)
+    shutil.copy(os.path.join(landing, 'sw.js'), out)
     for f in ('privacy.html', 'terms.html', 'support.html', 'licences.html', 'og.jpg'):
         shutil.copy(os.path.join(site, f), out)
     shutil.copytree(os.path.join(site, 'icons'), os.path.join(out, 'icons'))
     open(os.path.join(out, '.nojekyll'), 'w').close()
-    _write(os.path.join(out, '_redirects'), REDIRECTS)
 
     if INCLUDE_WEB_PREVIEW:
+        _write(os.path.join(out, '_redirects'), REDIRECTS)
         cf = _load_cf()
         cf.build(site, os.path.join(out, 'web'))
         _install_web_preview(os.path.join(out, 'web'), landing)

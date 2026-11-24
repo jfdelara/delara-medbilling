@@ -123,6 +123,10 @@ class LandingBundle(unittest.TestCase):
         self.assertIn('web-preview-banner', web_index)
         self.assertIn('web-preview-gate', web_index)
         self.assertIn('js/app.js', web_index)
+        self.assertLess(web_index.find('Content-Security-Policy'), web_index.find('<script'))
+        self.assertIn('https://apps.apple.com/ca/app/medbilling-fee-desk/id6819118647', web_index)
+        self.assertIn('https://medibrisa.com/#apps', web_index)
+        self.assertIn('admin@medibrisa.com', web_index)
         self.assertNotIn("href=\"/css/", web_index)
         self.assertNotIn("src=\"/js/", web_index)
         self.assertNotIn("href=\"/data/", web_index)
@@ -150,6 +154,19 @@ class LandingBundle(unittest.TestCase):
                 if re.search(r'\bJose\b', text) or re.search(r'jfdelara', text, re.I):
                     leaked.append(os.path.join(dirpath, name))
         self.assertEqual(leaked, [])
+    def test_include_flag_omits_web_and_landing_link(self):
+        prev = lb.INCLUDE_WEB_PREVIEW
+        lb.INCLUDE_WEB_PREVIEW = False
+        try:
+            out = os.path.join(self.tmp, 'no-web'); lb.build(out)
+        finally:
+            lb.INCLUDE_WEB_PREVIEW = prev
+        self.assertFalse(os.path.exists(os.path.join(out, 'web')))
+        self.assertFalse(os.path.exists(os.path.join(out, '_redirects')))
+        landing = open(os.path.join(out, 'index.html'), encoding='utf-8').read()
+        self.assertIn('Get the app', landing)
+        self.assertNotIn('href="web/"', landing)
+        self.assertNotIn('free web preview', landing)
 
 
 if __name__ == '__main__': unittest.main()
