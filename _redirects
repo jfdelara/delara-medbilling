@@ -1,0 +1,2 @@
+# Trailing slash so relative css/js/data URLs resolve under /web/.
+/web /web/ 308

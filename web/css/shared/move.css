@@ -1,0 +1,32 @@
+/* move-prep: shared styles for Export my data / Import my data and the "This app is moving" banner
+   (identical file in both apps: css/shared/move.css). */
+.mvbanner{box-sizing:border-box;margin:10px 12px;padding:12px 14px;border:2px solid #b45309;border-radius:12px;background:#fffbeb;color:#1f2933;font:400 .92rem/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;max-width:900px}
+@media (min-width:940px){.mvbanner{margin:10px auto}}
+.mvbanner .mvbhd{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.mvbanner h2{margin:0;font-size:1.05rem;font-weight:700;color:#92400e}
+.mvbanner p{margin:6px 0}
+.mvbanner a{color:#0f766e;font-weight:600;word-break:break-all}
+.mvbanner .mvsteps{margin:6px 0 8px;padding-left:1.4em}
+.mvbanner .mvsteps li{margin:2px 0}
+.mvbtns{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.mvprimary,.mvghost{min-height:40px;padding:0 16px;border-radius:999px;font-weight:600;font-size:.9rem;cursor:pointer;border:1px solid #0f766e}
+.mvprimary{background:#0f766e;color:#fff}
+.mvprimary:disabled{opacity:.45;cursor:not-allowed}
+.mvghost{background:#fff;color:#115e59}
+.mvdlg{box-sizing:border-box;width:min(520px,calc(100vw - 24px));max-height:calc(100vh - 40px);overflow:auto;border:0;border-radius:14px;padding:16px;color:#1f2933;font:400 .92rem/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;box-shadow:0 10px 40px rgba(0,0,0,.25)}
+.mvdlg::backdrop{background:rgba(15,23,42,.45)}
+.mvdlg h3{margin:0 0 8px;font-size:1.05rem}
+.mvdlg .mvfrom{margin:0 0 6px}
+.mvdlg .mvcounts{width:100%;border-collapse:collapse;margin:4px 0 10px}
+.mvdlg .mvcounts th,.mvdlg .mvcounts td{padding:5px 6px;border-bottom:1px solid #d9dee5;text-align:left}
+.mvdlg .mvcounts td{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.mvdlg .mvmodes{border:0;margin:0;padding:0;display:grid;gap:8px}
+.mvdlg .mvmodes label{display:flex;gap:8px;align-items:flex-start}
+.mvdlg .mvmodes input{margin-top:3px}
+.mvdlg .mvsure{padding:8px;border-radius:8px;background:#fef2f2;color:#991b1b}
+.mvdlg .mverr{color:#b91c1c;font-weight:600;margin:8px 0 0}
+.mvdlg .mverr:empty{display:none}
+.mvsr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.mvdlg [hidden],.mvbanner [hidden]{display:none!important}
+.mvnotes{margin:.4rem 0 .2rem;padding-left:1.1rem;font-size:.92em;color:#334155}.mvnotes li{margin:.15rem 0}
+.mvguide{margin:4px 0 10px}.mvguide summary{cursor:pointer;font-weight:600}.mvguide ul{margin:6px 0 0 1.1em;padding:0}.mvguide li{margin:3px 0;line-height:1.4}

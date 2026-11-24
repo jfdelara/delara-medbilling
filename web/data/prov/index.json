@@ -1,0 +1,98 @@
+{
+ "built": "2026-10-03T20:51:40-06:00",
+ "list": [
+  {
+   "id": "AB",
+   "name": "Alberta",
+   "group": "prov",
+   "status": "live"
+  },
+  {
+   "id": "MB",
+   "name": "Manitoba",
+   "group": "prov",
+   "status": "live",
+   "file": "MB.json",
+   "effective": "2026-10-01",
+   "effectiveLabel": "Updated 1 October 2026",
+   "counts": {
+    "rows": 4632,
+    "codes": 3825
+   },
+   "link": "https://www.manitoba.ca/health/manual/index.html",
+   "linkLabel": "Physician's Manual"
+  },
+  {
+   "id": "NL",
+   "name": "Newfoundland and Labrador",
+   "group": "prov",
+   "status": "live",
+   "file": "NL.json",
+   "effective": "2026-10-01",
+   "effectiveLabel": "Effective 1 October 2026",
+   "counts": {
+    "rows": 4665,
+    "codes": 4182,
+    "skipped": 18
+   },
+   "link": "https://www.gov.nl.ca/hcs/mcp/providers/",
+   "linkLabel": "MCP Medical Payment Schedule"
+  },
+  {
+   "id": "SK",
+   "name": "Saskatchewan",
+   "group": "prov",
+   "status": "live",
+   "file": "SK.json",
+   "effective": "2026-10-01",
+   "effectiveLabel": "Effective 1 October 2026",
+   "counts": {
+    "rows": 3171,
+    "codes": 3156
+   },
+   "link": "https://www.saskatchewan.ca/government/health-care-administration-and-provider-resources/resources-for-health-care-businesses-and-career-development/establishing-and-operating-a-practice/physicians",
+   "linkLabel": "Payment Schedule for Insured Services Provided by a Physician"
+  },
+  {
+   "id": "NT",
+   "name": "Northwest Territories",
+   "group": "terr",
+   "status": "live",
+   "file": "NT.json",
+   "effective": "2025-04-01",
+   "effectiveLabel": "Effective 1 April 2025",
+   "counts": {
+    "rows": 1463,
+    "codes": 1463,
+    "skipped": 2
+   },
+   "link": "https://www.hss.gov.nt.ca/en/services/nwt-health-care-plan/physician-services",
+   "linkLabel": "Insured Services Tariff (physicians)"
+  },
+  {
+   "id": "NU",
+   "name": "Nunavut",
+   "group": "terr",
+   "status": "none",
+   "message": "MedBilling Fee Desk does not include a fee schedule for Nunavut.",
+   "link": "https://www.nunavutlegislation.ca/en/file-download/download/public/4785",
+   "linkLabel": "Medical Care Regulations"
+  },
+  {
+   "id": "YT",
+   "name": "Yukon",
+   "group": "terr",
+   "status": "live",
+   "file": "YT.json",
+   "effective": "2026-04-01",
+   "effectiveLabel": "Effective 1 April 2026",
+   "counts": {
+    "rows": 2804,
+    "codes": 2647,
+    "skipped": 1
+   },
+   "link": "https://apps.gov.yk.ca/physicianresources/f?p=271:9000",
+   "linkLabel": "Payment Schedule"
+  }
+ ]
+}
