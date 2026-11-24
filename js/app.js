@@ -1,6 +1,7 @@
 /* MedBilling Fee Desk - app. Static, offline-capable. No analytics, no trackers, no patient data stored. */
 (function () {
   'use strict';
+  if (window.WEB_PREVIEW_ENDED) return; // public /web/ preview only: landing/web-preview.js sets this after expiry or when disabled
   const APP_URL = (typeof window.APP_URL === 'string' && /^https:\/\/[^\s"'<>]+\/$/.test(window.APP_URL)) ? window.APP_URL : 'https://feedesk.medibrisa.com/'; // canonical web address; set in js/move-config.js
   const STUDIO_BRAND = 'Medibrisa Software Ltd.'; // the one place the studio/brand name lives in app code; no personal name or title on app screens
   const $ = (s, el) => (el || document).querySelector(s);
